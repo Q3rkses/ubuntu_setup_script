@@ -431,16 +431,3 @@ It covers apt, the GCC pin, dotfiles, the editor, the browser, rustup and the
 ROS 2 apt setup. It can't cover the GNOME stages, because a container has no
 session bus, so `shortcuts` and `wallpaper` abort there by design. Test those on
 real hardware or in a VM.
-
----
-
-## Scope
-
-This installer targets Ubuntu 26.04 with stock GNOME, and nothing else. There's
-no distro detection and no window-manager logic anywhere in the repo. That's a
-deliberate constraint rather than an omission. An Arch or Hyprland equivalent
-would be a separate project with no shared code.
-
-One more thing it deliberately doesn't attempt: GDM multi-monitor configuration.
-The usual `monitors.xml` copy trick is broken by `DynamicUser=yes` on 26.04, so
-the installer doesn't silently try it and leave you wondering why it half-worked.
