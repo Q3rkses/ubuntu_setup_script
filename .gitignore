@@ -1,0 +1,19 @@
+# Local install state (lives in ~/.local/state/vortex-onboarding, but just in case)
+.install_state
+*.log
+
+# Backups produced by the installer
+*.bak
+*.bak.*
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Downloaded artefacts the installer fetches at runtime
+/tmp_downloads/
+*.deb
+*.zip
+*.tar.gz

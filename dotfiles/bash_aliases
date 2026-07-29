@@ -1,0 +1,33 @@
+# ~/.bash_aliases: managed by vortex-onboarding.
+#
+# Shared by both the vortex and personal profiles. Personal-only aliases live in
+# ~/.bash_aliases.personal, which the vortex profile never installs.
+
+# some more ls aliases
+alias ls='ls --color=auto'
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+
+# open the correct text editor
+#
+# `code` is deliberately shadowed by Neovim on a Neovim install. On a VS Code
+# install we must NOT shadow it, or `code .` stops opening the editor.
+if [ "${VXO_EDITOR:-nvim}" = "nvim" ] && command -v nvim >/dev/null 2>&1; then
+    code() { nvim "$@"; }
+fi
+
+# ROS2 Aliases
+alias s="source install/setup.bash"
+
+cb() { colcon build --cmake-args -DBUILD_TESTING=ON --packages-up-to "$@"; }
+ct() { colcon test --event-handlers console_direct+ --packages-select "$@"; }
+
+if command -v register-python-argcomplete3 >/dev/null 2>&1; then
+  eval "$(register-python-argcomplete3 colcon)"
+elif command -v register-python-argcomplete >/dev/null 2>&1; then
+  eval "$(register-python-argcomplete colcon)"
+fi
+
+complete -o default -o bashdefault -F _python_argcomplete cb
+complete -o default -o bashdefault -F _python_argcomplete ct

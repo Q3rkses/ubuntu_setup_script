@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec wofi --show drun --width 1000 --height 600

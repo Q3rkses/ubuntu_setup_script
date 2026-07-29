@@ -1,0 +1,122 @@
+## ~/.blerc: ble.sh configuration, managed by vortex-onboarding.
+##
+## ble.sh gives bash inline autosuggestions from history and live syntax
+## highlighting, i.e. what PowerShell's PSReadLine predictive IntelliSense does.
+## Reinstalled by `./install.sh --only=bashrc`.
+
+# ── autosuggestion ────────────────────────────────────────────────────────
+# Show the grey inline completion ahead of the cursor as you type.
+#   history: suggest the most recent matching command
+#   syntax:  complete filenames, variables and options contextually
+# complete_auto_delay is in milliseconds: how long the line must be idle before
+# the grey suggestion appears. 1 means "essentially instantly".
+bleopt complete_auto_complete=1
+bleopt complete_auto_delay=1
+
+# Colour the completion menu and highlight the matched substring in each entry.
+bleopt complete_menu_color=on
+bleopt complete_menu_color_match=on
+bleopt complete_menu_filter=1
+
+# Right-arrow / End accept the whole suggestion; Alt-f accepts one word.
+ble-bind -m 'auto_complete' -f 'C-f' 'auto_complete/insert'
+ble-bind -m 'auto_complete' -f 'right' 'auto_complete/insert'
+ble-bind -m 'auto_complete' -f 'end' 'auto_complete/insert'
+ble-bind -m 'auto_complete' -f 'M-f' 'auto_complete/insert-word'
+
+# ── menu completion ───────────────────────────────────────────────────────
+# Tab opens a navigable menu instead of dumping a plain column list.
+bleopt complete_menu_style=align-nowrap
+bleopt complete_menu_complete=1
+ble-bind -m 'menu_complete' -f 'right' 'menu_complete/forward'
+ble-bind -m 'menu_complete' -f 'left'  'menu_complete/backward'
+
+# ── syntax highlighting: informative only ─────────────────────────────────
+# Highlighting is ON, but deliberately restrained.
+#
+# The principle: colour only what tells you something you didn't already know.
+# Colouring the command word is noise. It's the first word of every line, so
+# it's always coloured and the colour carries no information. Colouring an
+# *error*, a string *boundary*, or a path that is *really a directory* does.
+#
+# ble.sh's stock theme paints commands brown, strings green, builtins red and
+# executables green; the effect is a wall of colour where green means four
+# different things. Everything below is set explicitly, so upstream changing a
+# default cannot quietly reintroduce that.
+bleopt highlight_syntax=1
+bleopt highlight_filename=1
+bleopt highlight_variable=1
+
+# ── neutral: the command word and its kind ────────────────────────────────
+# All of these are "the thing you are running". Left at the terminal's own
+# foreground colour so a typed line looks exactly like an untyped one.
+ble-face -s syntax_command        none
+ble-face -s command_builtin       none
+ble-face -s command_builtin_dot   none
+ble-face -s command_alias         none
+ble-face -s command_function      none
+ble-face -s command_file          none   # stock: green
+ble-face -s command_keyword       none
+ble-face -s command_jobs          none
+ble-face -s filename_executable   none   # stock: green,underline
+ble-face -s filename_link         none
+ble-face -s filename_other        none
+ble-face -s filename_ls_colors    none
+
+# ── neutral: structure ────────────────────────────────────────────────────
+# Pipes, braces, globs and tildes are punctuation. You can see them fine.
+ble-face -s syntax_delimiter      none
+ble-face -s syntax_brace          none
+ble-face -s syntax_tilde          none
+ble-face -s syntax_glob           none
+ble-face -s syntax_escape         none
+ble-face -s syntax_expr           none
+ble-face -s syntax_document       none
+ble-face -s syntax_document_begin none
+ble-face -s syntax_history_expansion none
+
+# ── coloured: things worth noticing ───────────────────────────────────────
+# Catppuccin Mocha, matching the kitty theme.
+
+# Syntax errors: unclosed quote, stray pipe, bad redirect. Red, before Enter.
+ble-face -s syntax_error          fg=#f38ba8,bold
+# An argument rejected by that command's completion spec (e.g. a bogus flag).
+ble-face -s argument_error        fg=#f38ba8
+# A path argument that does not exist where one is required.
+ble-face -s filename_warning      fg=#f38ba8
+
+# Option flags (-m, --verbose). Stock teal; dimmed to a muted blue so they read
+# as structure rather than competing with the string and variable colours.
+ble-face -s argument_option       fg=#7f849c
+
+# String contents and their quote marks: shows where a string really ends.
+ble-face -s syntax_quoted         fg=#f9e2af   # stock: green
+ble-face -s syntax_quotation      fg=#f9e2af,bold
+
+# Comments recede.
+ble-face -s syntax_comment        fg=#6c7086
+
+# Variables and expansions: spot a $VAR at a glance.
+ble-face -s syntax_varname        fg=#cba6f7
+ble-face -s syntax_param_expansion fg=#cba6f7
+
+# An argument that really is an existing directory.
+ble-face -s filename_directory    fg=#89b4fa,underline
+ble-face -s command_directory     fg=#89b4fa,underline
+ble-face -s filename_url          fg=#89b4fa,underline
+
+# The grey inline suggestion. This is NOT text you typed. It's the prediction
+# sitting ahead of the cursor, so it must read as "not yet entered".
+ble-face -s auto_complete         fg=#585b70
+
+# ── behaviour ─────────────────────────────────────────────────────────────
+# No audible bell. `edit_bell=` is the real option name; `edit_abell` and
+# `edit_vbell` do not exist and make ble.sh print an error on every new shell.
+bleopt edit_bell=
+
+# Bracketed paste: a multi-line paste is staged on the command line for review
+# rather than executed line by line, so a half-copied `rm` can't run itself.
+bleopt term_bracketed_paste_mode=on
+
+# Keep ble.sh's history in step with bash's, so suggestions reflect other shells.
+bleopt history_share=1

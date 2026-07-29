@@ -1,0 +1,28 @@
+# ~/.bash_aliases.personal: managed by vortex-onboarding.
+#
+# Installed only by the *personal* profile. Sourced from ~/.bashrc after
+# ~/.bash_aliases, so anything here wins over the shared definitions.
+#
+# This is the right place for machine- or person-specific shortcuts: it is never
+# installed on a VortexNTNU member's machine.
+
+# University virtualenvs.
+#
+# ${VXO_UNI_DIR} defaults to ~/code/uni, the layout a fresh install produces.
+# The old ~/vscopium/uni tree predates the move to ~/code. Point VXO_UNI_DIR at
+# it in ~/.bashrc.local if you are on a machine that still has it.
+#
+# Each alias is defined only when its venv actually exists, so a fresh machine
+# gets no alias at all rather than one that fails with a confusing error the
+# first time you reach for it.
+: "${VXO_UNI_DIR:=$HOME/code/uni}"
+
+[ -f "$VXO_UNI_DIR/multivariat/multivariate_env/bin/activate" ] &&
+    alias sm="source $VXO_UNI_DIR/multivariat/multivariate_env/bin/activate"
+
+[ -f "$VXO_UNI_DIR/robotsyn/robotsyn_env/bin/activate" ] &&
+    alias sr="source $VXO_UNI_DIR/robotsyn/robotsyn_env/bin/activate"
+
+# Keep the file's exit status clean. A failed `[ -f ]` above would otherwise
+# make sourcing this file return non-zero.
+true

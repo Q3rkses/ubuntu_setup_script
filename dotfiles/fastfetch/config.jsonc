@@ -1,0 +1,105 @@
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+
+  // Splash image on the left, rendered via the kitty graphics protocol.
+  // @@VXO_LOGO@@ is substituted by lib/kitty_fastfetch.sh at install time:
+  // the Vortex logo for the vortex profile, the personal logo otherwise.
+  "logo": {
+    "type": "kitty-direct",
+    "source": "@@VXO_LOGO@@",
+    "width": 42,
+    "height": 12,
+    "padding": {
+      "top": 2,
+      "left": 2,
+      "right": 4
+    }
+  },
+
+  "display": {
+    "separator": "  "
+  },
+
+  "modules": [
+
+    // header — user@host
+    {
+      "type": "title",
+      "key": " 󰀄",
+      "format": "{1}@{2}"
+    },
+
+    // ── software ─────────────────────────────
+    {
+      "type": "custom",
+      "format": "╭─ software ─────────────────────╮"
+    },
+    {
+      "type": "os",
+      "key": " 󰌽 OS",
+      "format": "{name} {version-id} LTS"
+    },
+    {
+      "type": "packages",
+      "key": " 󰏗 Pkgs",
+      "format": "{dpkg} (dpkg)"
+    },
+    {
+      "type": "terminal",
+      "key": " 󰆍 Term"
+    },
+    {
+      "type": "wm",
+      "key": " 󱗃 WM",
+      "format": "{2}"
+    },
+    {
+      "type": "uptime",
+      "key": " 󱫐 Up"
+    },
+
+    // ── hardware ─────────────────────────────
+    {
+      "type": "custom",
+      "format": "├─ hardware ─────────────────────┤"
+    },
+    {
+      "type": "cpu",
+      "key": " 󰻠 CPU",
+      "format": "{1}"
+    },
+    {
+      "type": "gpu",
+      "key": " 󰢮 GPU",
+      "format": "{1} {2}"
+    },
+    {
+      "type": "memory",
+      "key": " 󰍛 RAM",
+      "format": "{1} / {2}"
+    },
+    {
+      "type": "disk",
+      "key": " 󰋊 Disk",
+      "folders": "/",
+      "format": "{1} / {2}"
+    },
+    {
+      "type": "battery",
+      "key": " 󱐋 Batt",
+      "format": "{4}, {7} cycles"
+    },
+    {
+      "type": "custom",
+      "format": "╰────────────────────────────────╯"
+    },
+
+    "break",
+
+    // bottom color strip
+    {
+      "type": "colors",
+      "symbol": "circle"
+    }
+  ]
+}

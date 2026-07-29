@@ -1,0 +1,230 @@
+# ~/.bashrc: executed by bash(1) for non-login shells.
+#
+# Managed by vortex-onboarding (https://github.com/vortexntnu/onboarding).
+# Reinstalled by `./install.sh --only=bashrc`; the previous copy is kept as
+# ~/.bashrc.bak.<timestamp>. Local tweaks are better placed in
+# ~/.bash_aliases or ~/.bash_aliases.personal, which survive reinstalls.
+#
+# Everything that touches an optional tool is guarded, so this file is safe on a
+# machine without ROS, cargo, conda or nvm installed.
+
+# If not running interactively, don't do anything
+case $- in
+*i*) ;;
+*) return ;;
+esac
+
+# Profile/editor/workspace choices recorded by the installer.
+if [ -f "$HOME/.config/vortex-onboarding/env.sh" ]; then
+    . "$HOME/.config/vortex-onboarding/env.sh"
+fi
+
+# ── ble.sh (part 1 of 2) ─────────────────────────────────────────────────
+# Inline autosuggestions from history plus live syntax highlighting, the bash
+# equivalent of PowerShell's PSReadLine predictive IntelliSense.
+#
+# This MUST be sourced near the top with --noattach, and attached at the very
+# bottom of the file (part 2). ble.sh replaces bash's line editor, so attaching
+# it before the rest of the rc has run would fight with starship's prompt hooks
+# and with the fzf key bindings. Splitting it is the documented, supported way.
+if [ -f "$HOME/.local/share/blesh/ble.sh" ]; then
+    . "$HOME/.local/share/blesh/ble.sh" --noattach
+fi
+
+# don't put duplicate lines or lines starting with space in the history.
+# See bash(1) for more options
+HISTCONTROL=ignoreboth
+
+# append to the history file, don't overwrite it
+shopt -s histappend
+
+# for setting history length see HISTSIZE and HISTFILESIZE in bash(1)
+HISTSIZE=1000
+HISTFILESIZE=2000
+
+# check the window size after each command and, if necessary,
+# update the values of LINES and COLUMNS.
+shopt -s checkwinsize
+
+# If set, the pattern "**" used in a pathname expansion context will
+# match all files and zero or more directories and subdirectories.
+#shopt -s globstar
+
+# make less more friendly for non-text input files, see lesspipe(1)
+[ -x /usr/bin/lesspipe ] && eval "$(SHELL=/bin/sh lesspipe)"
+
+# set variable identifying the chroot you work in (used in the prompt below)
+if [ -z "${debian_chroot:-}" ] && [ -r /etc/debian_chroot ]; then
+    debian_chroot=$(cat /etc/debian_chroot)
+fi
+
+# set a fancy prompt (non-color, unless we know we "want" color)
+case "$TERM" in
+xterm-color | *-256color) color_prompt=yes ;;
+esac
+
+# uncomment for a colored prompt, if the terminal has the capability; turned
+# off by default to not distract the user: the focus in a terminal window
+# should be on the output of commands, not on the prompt
+#force_color_prompt=yes
+
+if [ -n "$force_color_prompt" ]; then
+    if [ -x /usr/bin/tput ] && tput setaf 1 >&/dev/null; then
+        # We have color support; assume it's compliant with Ecma-48
+        # (ISO/IEC-6429). (Lack of such support is extremely rare, and such
+        # a case would tend to support setf rather than setaf.)
+        color_prompt=yes
+    else
+        color_prompt=
+    fi
+fi
+
+if [ "$color_prompt" = yes ]; then
+    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+else
+    PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+fi
+unset color_prompt force_color_prompt
+
+# If this is an xterm set the title to user@host:dir
+case "$TERM" in
+xterm* | rxvt*)
+    PS1="\[\e]0;${debian_chroot:+($debian_chroot)}\u@\h: \w\a\]$PS1"
+    ;;
+*) ;;
+
+esac
+
+# enable color support of ls and also add handy aliases
+if [ -x /usr/bin/dircolors ]; then
+    test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
+    alias ls='ls --color=auto'
+    #alias dir='dir --color=auto'
+    #alias vdir='vdir --color=auto'
+
+    alias grep='grep --color=auto'
+    alias fgrep='fgrep --color=auto'
+    alias egrep='egrep --color=auto'
+fi
+
+# colored GCC warnings and errors
+export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'
+
+# Add an "alert" alias for long running commands.  Use like so:
+#   sleep 10; alert
+alias alert='notify-send --urgency=low -i "$([ $? = 0 ] && echo terminal || echo error)" "$(history|tail -n1|sed -e '\''s/^\s*[0-9]\+\s*//;s/[;&|]\s*alert$//'\'')"'
+
+# Alias definitions.
+if [ -f ~/.bash_aliases ]; then
+    . ~/.bash_aliases
+fi
+
+# Personal-profile aliases (university venvs etc). Only present on a personal
+# install; the vortex profile never gets this file.
+if [ -f ~/.bash_aliases.personal ]; then
+    . ~/.bash_aliases.personal
+fi
+
+# Argument completion for colcon
+if [ -f /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash ]; then
+    . /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash
+fi
+
+# enable programmable completion features (you don't need to enable
+# this, if it's already enabled in /etc/bash.bashrc and /etc/profile
+# sources /etc/bash.bashrc).
+if ! shopt -oq posix; then
+    if [ -f /usr/share/bash-completion/bash_completion ]; then
+        . /usr/share/bash-completion/bash_completion
+    elif [ -f /etc/bash_completion ]; then
+        . /etc/bash_completion
+    fi
+fi
+
+# Source Filip Nilsen who copied from Jon Aslak who copied from Kleven (2024)
+rcd() {
+    temp_file="$(mktemp -t ranger_cd.XXXXXXXXXX)"
+    env ranger --choosedir="$temp_file" "$@"
+    if chosen_dir="$(cat -- "$temp_file")" &&
+        [ -n "$chosen_dir" ] &&
+        [ "$chosen_dir" != "$PWD" ]; then
+        cd -- "$chosen_dir"
+    fi
+    rm -f -- "$temp_file"
+}
+
+# Starship (robust init)
+if [ -x "$HOME/.local/bin/starship" ]; then
+    export PATH="$HOME/.local/bin:$PATH"
+    eval "$("$HOME/.local/bin/starship" init bash)"
+fi
+
+# ── ROS 2 ────────────────────────────────────────────────────────────────
+# ROS 2 Lyrical Luth (Ubuntu 26.04). Both lines are guarded so a machine
+# without ROS, or one where the workspace has never been built, still starts a
+# shell without errors.
+if [ -f /opt/ros/lyrical/setup.bash ]; then
+    . /opt/ros/lyrical/setup.bash
+fi
+
+if [ -f "${VXO_ROS_WS:-$HOME/code/ros2_ws}/install/setup.bash" ]; then
+    . "${VXO_ROS_WS:-$HOME/code/ros2_ws}/install/setup.bash"
+fi
+
+# Per-command argcomplete (more robust than the global hooks)
+if command -v register-python-argcomplete3 >/dev/null 2>&1; then
+    eval "$(register-python-argcomplete3 ros2)"
+    eval "$(register-python-argcomplete3 colcon)"
+fi
+
+# ── lazy loaders ─────────────────────────────────────────────────────────
+# These stay lazy on purpose: eagerly sourcing conda and nvm costs ~200ms on
+# every single shell. Each stub replaces itself on first use.
+
+# lazy activate conda
+if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
+    conda() {
+        unset -f conda
+        . "$HOME/miniconda3/etc/profile.d/conda.sh"
+        conda "$@"
+    }
+fi
+
+# lazy activate nvm
+export NVM_DIR="$HOME/.nvm"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+    nvm() {
+        unset -f nvm
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+        nvm "$@"
+    }
+fi
+
+# ── rust ─────────────────────────────────────────────────────────────────
+if [ -d "$HOME/.cargo/bin" ]; then
+    export PATH="$HOME/.cargo/bin:$PATH"
+fi
+if [ -f "$HOME/.cargo/env" ]; then
+    . "$HOME/.cargo/env"
+fi
+
+# ── fzf ──────────────────────────────────────────────────────────────────
+if [ -f /usr/share/doc/fzf/examples/key-bindings.bash ]; then
+    . /usr/share/doc/fzf/examples/key-bindings.bash
+fi
+
+# ── splash ───────────────────────────────────────────────────────────────
+# Show fastfetch once, in the first kitty window only.
+if command -v fastfetch >/dev/null 2>&1; then
+    if [ "$(pgrep -x kitty | wc -l)" -le 1 ]; then
+        fastfetch
+    fi
+fi
+
+# ── ble.sh (part 2 of 2) ─────────────────────────────────────────────────
+# Attach last, once starship and the fzf bindings are in place. BLE_VERSION is
+# only set when part 1 actually sourced, so this is a no-op without ble.sh.
+if [ -n "${BLE_VERSION-}" ]; then
+    ble-attach
+fi
