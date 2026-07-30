@@ -176,6 +176,135 @@ _vxo_editor_nvim() {
     _vxo_install_neovim_binary
     _vxo_clone_nvim_config
     _vxo_nvim_lazy_sync
+    _vxo_nvim_make_default
+}
+
+# ─────────────────────── neovim as THE default editor ───────────────────────
+#
+# "Default editor" is four unrelated mechanisms on Ubuntu, and setting only one
+# of them is why nano keeps reappearing:
+#
+#   1. $EDITOR / $VISUAL / $SUDO_EDITOR   most CLI tools. Written to env.sh by
+#                                         lib/bashrc.sh, not here.
+#   2. update-alternatives "editor"       what /usr/bin/editor points at. This
+#                                         is what `sensible-editor` resolves,
+#                                         and what several Debian tools call
+#                                         when $EDITOR is unset.
+#   3. git core.editor / sequence.editor  git ignores $EDITOR when these are
+#                                         set. Handled in lib/ssh_github.sh.
+#   4. xdg-mime associations              double-clicking a file in Nautilus.
+#
+# This function does 2 and 4.
+_vxo_nvim_make_default() {
+    _vxo_nvim_alternatives
+    _vxo_nvim_mime_defaults
+}
+
+_vxo_nvim_alternatives() {
+    local bin=/usr/local/bin/nvim
+    [[ -e "$bin" ]] || bin="$(command -v nvim 2>/dev/null || echo /usr/local/bin/nvim)"
+
+    # Priority 200 beats Ubuntu's stock entries (nano is 40, vim.tiny 15), so
+    # even auto mode resolves to Neovim. --set then pins it in manual mode, so a
+    # later apt install of some higher-priority editor cannot take it back.
+    run sudo update-alternatives --install /usr/bin/editor editor "$bin" 200 \
+        || { log_warn "could not register $bin with update-alternatives"; return 0; }
+    run sudo update-alternatives --set editor "$bin" \
+        || log_warn "could not set the editor alternative to $bin"
+
+    log_ok "update-alternatives: editor -> $bin"
+}
+
+# Text-ish MIME types that should open in Neovim from the file manager.
+#
+# nvim.desktop ships with Terminal=true, so GNOME launches it inside the default
+# terminal. That is the intended behaviour, not a bug: a terminal editor with no
+# terminal has nowhere to draw.
+VXO_NVIM_MIMETYPES=(
+    text/plain
+    text/markdown
+    text/csv
+    text/x-c
+    text/x-csrc
+    text/x-chdr
+    text/x-c++src
+    text/x-c++hdr
+    text/x-python
+    text/x-java
+    text/x-lua
+    text/x-makefile
+    text/x-tex
+    text/x-shellscript
+    application/x-shellscript
+    application/json
+    application/xml
+    application/x-yaml
+    application/toml
+)
+
+_vxo_nvim_mime_defaults() {
+    if ! have xdg-mime; then
+        log_warn "xdg-mime is missing, so file-manager associations were left alone"
+        return 0
+    fi
+
+    # The desktop entry comes from the distro's neovim packaging. The tarball
+    # install does not ship one, so write it if it is absent.
+    _vxo_nvim_desktop_entry
+
+    if [[ "${VXO_DRY_RUN:-0}" == "1" ]]; then
+        log_info "[dry-run] would set nvim.desktop as the default for ${#VXO_NVIM_MIMETYPES[@]} MIME types"
+        return 0
+    fi
+
+    local m failed=0
+    for m in "${VXO_NVIM_MIMETYPES[@]}"; do
+        xdg-mime default nvim.desktop "$m" 2>/dev/null || failed=$((failed + 1))
+    done
+
+    if ((failed > 0)); then
+        log_warn "$failed of ${#VXO_NVIM_MIMETYPES[@]} MIME associations could not be set"
+    fi
+    log_ok "nvim opens text files from the file manager (${#VXO_NVIM_MIMETYPES[@]} MIME types)"
+}
+
+# Only written when the packaging did not provide one, so we never fight the
+# distro's own entry.
+_vxo_nvim_desktop_entry() {
+    local sys=/usr/share/applications/nvim.desktop
+    local own="$HOME/.local/share/applications/nvim.desktop"
+
+    if [[ -f "$sys" ]]; then
+        log_skip "using the packaged $sys"
+        return 0
+    fi
+
+    local content
+    content="$(cat <<'EOF'
+[Desktop Entry]
+Name=Neovim
+GenericName=Text Editor
+Comment=Edit text files
+TryExec=nvim
+Exec=nvim %F
+Terminal=true
+Type=Application
+Keywords=Text;editor;
+Icon=nvim
+Categories=Utility;TextEditor;
+MimeType=text/plain;text/markdown;text/x-c;text/x-csrc;text/x-chdr;text/x-c++src;text/x-c++hdr;text/x-python;text/x-java;text/x-lua;text/x-makefile;text/x-tex;text/x-shellscript;application/x-shellscript;application/json;application/xml;
+EOF
+)"
+
+    if [[ "${VXO_DRY_RUN:-0}" == "1" ]]; then
+        log_info "[dry-run] would write $own"
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$own")"
+    printf '%s\n' "$content" >"$own"
+    update-desktop-database "$(dirname "$own")" 2>/dev/null || true
+    log_ok "wrote $own"
 }
 
 # ─────────────────────────── vs code ───────────────────────────

@@ -44,6 +44,20 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   compiles fine and fails at runtime. The build enables IPOPT plus CasADi's
   bundled SUNDIALS, OSQP and qpOASES, then compiles and runs a program that
   loads all three plugins before the stage counts as done.
+- **Neovim becomes the system-wide default editor** when it is the chosen
+  editor. "Default editor" is four separate mechanisms on Ubuntu and setting
+  only one is why nano keeps reappearing, so all four are covered:
+  `$EDITOR`/`$VISUAL`/`$SUDO_EDITOR` (written to `env.sh`),
+  `update-alternatives editor` at priority 200 and pinned with `--set`,
+  `git core.editor` *and* `sequence.editor` (git prefers these over `$EDITOR`,
+  and `rebase -i` uses the latter), and `xdg-mime` associations for 19 text
+  types so files open in Neovim from the file manager. The VS Code choice sets
+  no environment variables: `code` returns instantly without `--wait`, which
+  makes git treat a commit message as empty.
+- `env.sh` is now hooked into `~/.profile` as well as `~/.bashrc`, so `$EDITOR`
+  is set for login shells and for GUI applications launched from the GNOME
+  session, not only for interactive terminals. A `~/.bash_profile`, if one
+  exists, gets its own copy, because bash reads it instead of `~/.profile`.
 - **YASMIN** for ROS 2: `yasmin`, `yasmin-ros` and `yasmin-viewer` from the ROS
   apt index. A package not yet released for Lyrical is a warning, not a failure.
 - Initial release of the VortexNTNU / personal Ubuntu onboarding installer.

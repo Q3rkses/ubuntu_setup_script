@@ -250,6 +250,45 @@ case "$VXO_EDITOR" in
             else
                 fail "nvim config is nvimconf" "$HOME/.config/nvim is not a clone of Q3rkses/nvimconf"
             fi
+            # "Default editor" is four separate mechanisms. Check each, because
+            # setting only some of them is exactly how nano keeps coming back.
+            if [[ "${EDITOR:-}" == nvim* ]]; then
+                pass "\$EDITOR is nvim" "$EDITOR"
+            else
+                fail "\$EDITOR is nvim" "got '${EDITOR:-unset}'. Open a new shell, or re-run ./install.sh --only=bashrc"
+            fi
+
+            if [[ "${VISUAL:-}" == nvim* && "${SUDO_EDITOR:-}" == nvim* ]]; then
+                pass "\$VISUAL and \$SUDO_EDITOR are nvim" ""
+            else
+                fail "\$VISUAL and \$SUDO_EDITOR are nvim" "VISUAL='${VISUAL:-unset}' SUDO_EDITOR='${SUDO_EDITOR:-unset}'"
+            fi
+
+            alt="$(update-alternatives --query editor 2>/dev/null | awk '/^Value:/ {print $2}')"
+            if [[ "$alt" == *nvim ]]; then
+                pass "update-alternatives editor" "$alt"
+            else
+                fail "update-alternatives editor" "points at '${alt:-nothing}', so /usr/bin/editor is not nvim"
+            fi
+
+            git_ed="$(git config --global core.editor 2>/dev/null || true)"
+            git_seq="$(git config --global sequence.editor 2>/dev/null || true)"
+            if [[ "$git_ed" == nvim* && "$git_seq" == nvim* ]]; then
+                pass "git uses nvim" "core.editor and sequence.editor"
+            else
+                fail "git uses nvim" "core.editor='${git_ed:-unset}' sequence.editor='${git_seq:-unset}'"
+            fi
+
+            if command -v xdg-mime >/dev/null 2>&1; then
+                mime_default="$(xdg-mime query default text/plain 2>/dev/null || true)"
+                if [[ "$mime_default" == nvim.desktop ]]; then
+                    pass "text files open in nvim" "text/plain -> nvim.desktop"
+                else
+                    fail "text files open in nvim" "text/plain -> '${mime_default:-nothing}'"
+                fi
+            else
+                skip "text files open in nvim" "xdg-mime is not installed"
+            fi
         elif [[ -z "$VXO_EDITOR" ]]; then
             skip "neovim" "editor choice unknown and nvim is absent"
         else

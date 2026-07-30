@@ -139,10 +139,20 @@ vxo_git_config() {
     run git config --global init.defaultBranch main
     run git config --global pull.rebase true
 
+    # core.editor covers commit messages; sequence.editor is the separate one
+    # `git rebase -i` uses for the todo list. Both are set explicitly because
+    # git prefers them over $EDITOR, so leaving one unset means half your git
+    # editing happens somewhere else.
+    #
+    # `-f` keeps nvim in the foreground; `--wait` does the same for VS Code.
+    # Without them git sees the editor exit instantly and treats the message as
+    # empty, aborting the commit.
     if [[ "${VXO_EDITOR:-nvim}" == "nvim" ]]; then
         run git config --global core.editor "nvim -f"
+        run git config --global sequence.editor "nvim -f"
     else
         run git config --global core.editor "code --wait"
+        run git config --global sequence.editor "code --wait"
     fi
 
     log_ok "git identity configured"

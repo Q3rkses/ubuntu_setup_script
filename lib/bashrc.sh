@@ -27,6 +27,7 @@ VXO_BLESH_MAIN="$VXO_BLESH_DIR/ble.sh"
 
 vxo_bashrc() {
     _vxo_write_env_file
+    _vxo_install_login_hooks
     _vxo_install_shell_files
     _vxo_install_nvm
     _vxo_install_blesh
@@ -85,6 +86,59 @@ _vxo_install_blesh() {
 # ───────────────────────────── generated env ─────────────────────────────
 
 # Written before the .bashrc that reads it, so the very next shell is correct.
+# Make env.sh reach login shells and the GUI session, not just interactive ones.
+#
+# The managed .bashrc sources env.sh, but .bashrc returns immediately for
+# non-interactive shells. That leaves two gaps that matter for EDITOR:
+#
+#   * the GNOME session. Nautilus, and anything launched from the Activities
+#     overview, inherit the environment GDM built from ~/.profile. Without this,
+#     EDITOR is unset for every GUI app.
+#   * `ssh host <command>` and other non-interactive login shells.
+#
+# ~/.profile covers both on a stock Ubuntu install. The ~/.bash_profile case is
+# the awkward one: when that file exists, bash reads it INSTEAD of ~/.profile
+# and the hook below would never run, so it gets its own copy. A fresh ISO has
+# no ~/.bash_profile, hence the existence check rather than creating one.
+_vxo_install_login_hooks() {
+    local hook
+    hook="$(cat <<'EOF'
+if [ -f "$HOME/.config/vortex-onboarding/env.sh" ]; then
+    . "$HOME/.config/vortex-onboarding/env.sh"
+fi
+EOF
+)"
+
+    ensure_block "$HOME/.profile" "vortex-onboarding-env" "$hook"
+
+    # Deliberately not created when absent: an empty ~/.bash_profile would stop
+    # bash reading ~/.profile at all, which is a worse outcome than this hook.
+    if [[ -f "$HOME/.bash_profile" ]]; then
+        ensure_block "$HOME/.bash_profile" "vortex-onboarding-env" "$hook"
+    fi
+}
+
+# EDITOR/VISUAL/SUDO_EDITOR, but only when Neovim was the choice.
+#
+# These three cover almost everything that asks "which editor?": git (when
+# core.editor is unset), sudoedit, crontab -e, less -v, and most TUI tools.
+# SUDO_EDITOR is separate because sudoedit checks it before the other two.
+#
+# Nothing is emitted for the VS Code choice. `code` blocks until the window is
+# closed only with --wait, and an EDITOR that returns instantly makes git think
+# you saved an empty commit message.
+_vxo_editor_env_lines() {
+    [[ "${VXO_EDITOR:-nvim}" == "nvim" ]] || return 0
+    cat <<'EOF'
+
+# Default editor. Set here rather than in .bashrc so that re-running
+# --only=bashrc updates it, and so the value is identical in every shell.
+export EDITOR="nvim"
+export VISUAL="nvim"
+export SUDO_EDITOR="nvim"
+EOF
+}
+
 _vxo_write_env_file() {
     local content
     content="$(cat <<EOF
@@ -97,6 +151,7 @@ export VXO_EDITOR="${VXO_EDITOR:-nvim}"
 export VXO_BROWSER="${VXO_BROWSER:-}"
 export VXO_ROS="${VXO_ROS:-0}"
 export VXO_ROS_WS="\$HOME/code/ros2_ws"
+$(_vxo_editor_env_lines)
 EOF
 )"
 

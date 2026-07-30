@@ -325,6 +325,34 @@ instant instead of a three-minute plugin download.
 **VS Code** comes from Microsoft's apt repository, never the snap. Having both
 of them fighting over updates is a mess you only debug once.
 
+#### Neovim becomes the default editor everywhere
+
+Picking `nvim` doesn't just install it, it makes it *the* editor. "Default
+editor" on Ubuntu is four unrelated mechanisms, and setting only one of them is
+why nano keeps reappearing:
+
+| Mechanism | What it controls | Set by |
+|---|---|---|
+| `$EDITOR`, `$VISUAL`, `$SUDO_EDITOR` | most CLI tools: `crontab -e`, `sudoedit`, `less -v` | `bashrc` stage, via `env.sh` |
+| `update-alternatives editor` | `/usr/bin/editor`, which `sensible-editor` and several Debian tools resolve | `editor` stage, priority 200 and pinned |
+| `git core.editor` + `sequence.editor` | commit messages, and the `rebase -i` todo list | `git-config` stage |
+| `xdg-mime` associations | double-clicking a file in Nautilus | `editor` stage, 19 text MIME types |
+
+Two details worth knowing. Git prefers `core.editor` over `$EDITOR`, and
+`rebase -i` uses `sequence.editor` rather than `core.editor`, so both are set
+explicitly; leaving one out means half your git editing happens somewhere else.
+And `nvim -f` keeps Neovim in the foreground, because an editor that exits
+immediately makes git think you saved an empty message and abort the commit.
+
+The environment variables go in `env.sh`, which is sourced from `~/.bashrc` for
+interactive shells and hooked into `~/.profile` for login shells and the GNOME
+session. Without the `~/.profile` hook, `$EDITOR` would be unset for every GUI
+application. If a `~/.bash_profile` exists it gets its own copy, because bash
+reads that file *instead of* `~/.profile`.
+
+Choosing `vscode` sets none of the environment variables. `code` returns
+instantly unless invoked with `--wait`, which would break git commits.
+
 ### 11. `browser`: Chrome, Vivaldi or Firefox
 All three come from the vendor's official apt repo. For Firefox that means an
 apt pin which beats Ubuntu's transitional package, so you get the real `.deb`
