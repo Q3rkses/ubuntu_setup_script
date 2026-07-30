@@ -22,7 +22,7 @@
 
   "modules": [
 
-    // header — user@host
+    // header: user@host
     {
       "type": "title",
       "key": " 󰀄",

@@ -87,6 +87,47 @@ for compiler in gcc g++; do
     fi
 done
 
+section "C++ libraries"
+
+# Eigen is header-only, so "installed" means the headers resolve, not that a
+# library exists.
+if [[ -f /usr/include/eigen3/Eigen/src/Core/util/Macros.h ]]; then
+    eigen_ver="$(awk '/define EIGEN_WORLD_VERSION/ {w=$3} /define EIGEN_MAJOR_VERSION/ {m=$3} /define EIGEN_MINOR_VERSION/ {p=$3} END {print w"."m"."p}' \
+        /usr/include/eigen3/Eigen/src/Core/util/Macros.h)"
+    pass "Eigen headers" "$eigen_ver at /usr/include/eigen3"
+else
+    fail "Eigen headers" "/usr/include/eigen3 is missing (apt install libeigen3-dev)"
+fi
+
+if [[ -d /usr/local/include/eigen3 ]]; then
+    fail "No shadowing Eigen in /usr/local" "a second Eigen there overrides the apt one and can break ROS builds"
+else
+    pass "No shadowing Eigen in /usr/local" ""
+fi
+
+if [[ -f /usr/local/lib/libcasadi.so ]]; then
+    pass "CasADi installed" "/usr/local/lib/libcasadi.so"
+
+    # The point of building from source is the plugins Debian strips out, so
+    # check for those specifically rather than just for the library.
+    casadi_missing=()
+    for plugin in ipopt cvodes osqp; do
+        case "$plugin" in
+            ipopt)  sofile=/usr/local/lib/libcasadi_nlpsol_ipopt.so ;;
+            cvodes) sofile=/usr/local/lib/libcasadi_integrator_cvodes.so ;;
+            osqp)   sofile=/usr/local/lib/libcasadi_conic_osqp.so ;;
+        esac
+        [[ -f "$sofile" ]] || casadi_missing+=("$plugin")
+    done
+    if ((${#casadi_missing[@]} == 0)); then
+        pass "CasADi solver plugins" "ipopt, cvodes, osqp all present"
+    else
+        fail "CasADi solver plugins" "missing: ${casadi_missing[*]}. Re-run ./install.sh --only=cxx-libs"
+    fi
+else
+    fail "CasADi installed" "/usr/local/lib/libcasadi.so is missing. Run ./install.sh --only=cxx-libs"
+fi
+
 section "Core tools"
 
 check_cmd "kitty installed"     kitty
@@ -278,6 +319,16 @@ else
         skip "Workspace built" "installed but not built (--skip-ros-build); finish with ./install.sh --only=ros2"
     else
         fail "Workspace built" "$ROS_WS/install/setup.bash is missing, so colcon build did not finish"
+    fi
+
+    yasmin_missing=()
+    for pkg in yasmin yasmin_ros yasmin_viewer; do
+        [[ -d "/opt/ros/lyrical/share/$pkg" ]] || yasmin_missing+=("$pkg")
+    done
+    if ((${#yasmin_missing[@]} == 0)); then
+        pass "YASMIN installed" "yasmin, yasmin_ros, yasmin_viewer"
+    else
+        fail "YASMIN installed" "missing: ${yasmin_missing[*]}. Re-run ./install.sh --only=ros2"
     fi
 
     missing_repos=()

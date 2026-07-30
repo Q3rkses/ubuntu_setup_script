@@ -5,9 +5,49 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- CasADi's bundled OSQP would not configure on Ubuntu 26.04. The release ships
+  CMake 4, which dropped compatibility with `cmake_minimum_required(VERSION
+  <3.5)`, and OSQP still declares one. The build failed at the
+  `osqp-external-configure` step with a bare `CMake Error at CMakeLists.txt:2`.
+  Fixed by passing `CMAKE_POLICY_VERSION_MINIMUM=3.5` both as a `-D` flag and in
+  the environment, because the solvers are built through `ExternalProject_Add`,
+  which spawns its own cmake and forwards only the arguments CasADi chose to
+  forward. It is passed with `env` rather than exported, so it is not still in
+  effect when colcon runs an hour later.
+- A failing step in a soft stage no longer runs the steps after it. `run_stage`
+  invokes soft stages as `"$fn" || rc=$?`, which suspends `errexit` for the
+  entire call tree, so a failed CasADi build went on to run the plugin verifier
+  and reported a misleading "will not compile" on top of the real error.
+- Removed every `die` from the `cxx-libs` stage. `die` calls `exit`, so from a
+  soft stage it would have taken down the whole installer, which is the exact
+  opposite of what "soft" promises.
+
+### Changed
+- The `git-ssh` stage is now `git-config` and does only git identity. It is a
+  hard stage: with SSH checked up front there is nothing left in it that can
+  reasonably fail.
+
 ### Added
+- **GitHub SSH is now a hard precondition.** The installer verifies
+  `ssh -T git@github.com` before the first stage runs and exits if it fails,
+  having changed nothing. It no longer generates keys, walks you through
+  GitHub's settings pages, or silently falls back to HTTPS: the old behaviour
+  produced a half-empty workspace and a colcon failure an hour later that looked
+  nothing like a missing key. The failure message links GitHub's own guide.
+  `--skip-ssh-check` exists for automated testing and nothing else.
+- **`cxx-libs` stage: Eigen and CasADi.** Eigen from apt (`libeigen3-dev`),
+  deliberately not from source, because a second Eigen under `/usr/local`
+  shadows the one every ROS 2 package was compiled against. CasADi built from
+  source and pinned in `lib/cxxlibs.sh`, because the apt package ships without
+  SUNDIALS (`cvodes`, `idas`), OSQP and qpOASES, and code asking for those
+  compiles fine and fails at runtime. The build enables IPOPT plus CasADi's
+  bundled SUNDIALS, OSQP and qpOASES, then compiles and runs a program that
+  loads all three plugins before the stage counts as done.
+- **YASMIN** for ROS 2: `yasmin`, `yasmin-ros` and `yasmin-viewer` from the ROS
+  apt index. A package not yet released for Lyrical is a warning, not a failure.
 - Initial release of the VortexNTNU / personal Ubuntu onboarding installer.
-- `install.sh` orchestrator with a twelve-stage pipeline, per-stage checkpointing
+- `install.sh` orchestrator with a thirteen-stage pipeline, per-stage checkpointing
   in `~/.local/state/vortex-onboarding/install_state`, and `--resume` /
   `--only=STAGE` recovery.
 - Interactive prompts for name, profile, editor, browser, ROS 2 and, on the

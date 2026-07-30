@@ -74,6 +74,12 @@ INSTALL_FLAGS=(
     --editor="${EDITOR_CHOICE}"
     --browser="${BROWSER_CHOICE}"
     --yes
+    # A container has no GitHub SSH key, and mounting the host's private key
+    # into one would be a genuinely bad idea. The harness therefore takes the
+    # documented HTTPS path: public repos clone, private VortexNTNU ones are
+    # expected to fail, and the SSH precondition itself has to be tested on a
+    # real machine or a VM.
+    --skip-ssh-check
 )
 [[ "$PROFILE" == "personal" ]] && INSTALL_FLAGS+=(--ros)
 ((SKIP_ROS_BUILD == 1)) && INSTALL_FLAGS+=(--skip-ros-build)

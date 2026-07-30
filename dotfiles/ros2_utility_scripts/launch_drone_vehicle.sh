@@ -41,13 +41,13 @@ fi
 
 # Cross-validate: pid uses quat reference filter, adaptive uses euler
 if [[ "$CONTROLLER_TYPE" == "pid" && "$ORI_TYPE" != "quat" ]]; then
-  echo "Warning: pid controller uses quaternion representation — consider --ori_type quat"
+  echo "Warning: pid controller uses quaternion representation, consider --ori_type quat"
 fi
 if [[ "$CONTROLLER_TYPE" == "adapt" && "$ORI_TYPE" != "euler" ]]; then
-  echo "Warning: adaptive controller uses euler representation — consider --ori_type euler"
+  echo "Warning: adaptive controller uses euler representation, consider --ori_type euler"
 fi
 if [[ "$CONTROLLER_TYPE" == "adapt_quat" && "$ORI_TYPE" != "quat" ]]; then
-  echo "Warning: adapt_quat controller uses quaternion representation — consider --ori_type quat"
+  echo "Warning: adapt_quat controller uses quaternion representation, consider --ori_type quat"
 fi
 
 # Select the DP launch file

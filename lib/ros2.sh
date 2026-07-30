@@ -23,6 +23,19 @@ VXO_ROS_REQUIRED_RELEASE="26.04"
 VXO_ROS_SETUP="/opt/ros/${VXO_ROS_DISTRO}/setup.bash"
 VXO_ROS_WS="$HOME/code/ros2_ws"
 
+# Extra ROS packages beyond ros-lyrical-desktop, written without the
+# "ros-<distro>-" prefix so the distro is named in exactly one place.
+#
+# yasmin is the finite state machine library Vortex builds mission logic on.
+# yasmin-ros adds the ROS 2 integration (action/service/topic states), and
+# yasmin-viewer is the web UI that draws the running state machine, which is the
+# fastest way to see why a mission is stuck.
+VXO_ROS_EXTRA_PACKAGES=(
+    yasmin
+    yasmin-ros
+    yasmin-viewer
+)
+
 # repo|branch. Add a line here to add a package to the workspace.
 VXO_ROS_REPOS=(
     "vortexntnu/vortex-auv|development"
@@ -92,10 +105,48 @@ _vxo_ros_packages() {
     run sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
     apt_install "ros-${VXO_ROS_DISTRO}-desktop"
     apt_install python3-colcon-common-extensions python3-rosdep python3-vcstool
+    _vxo_ros_extra_packages
 
     [[ -f "$VXO_ROS_SETUP" ]] \
         || die "ROS 2 packages installed but $VXO_ROS_SETUP is missing. The apt source may point at the wrong distro."
     log_ok "ROS 2 ${VXO_ROS_DISTRO} installed"
+}
+
+# YASMIN and anything else in VXO_ROS_EXTRA_PACKAGES.
+#
+# These are released into the ROS 2 apt index rather than built from source, so
+# they get security updates with everything else and do not lengthen the colcon
+# build. A package that has not been released for this distro yet is a warning,
+# not a failure: the rest of the ROS install is still perfectly usable.
+_vxo_ros_extra_packages() {
+    local pkg full missing=() want=()
+
+    for pkg in "${VXO_ROS_EXTRA_PACKAGES[@]}"; do
+        full="ros-${VXO_ROS_DISTRO}-${pkg}"
+        if _vxo_ros_apt_available "$full"; then
+            want+=("$full")
+        else
+            missing+=("$full")
+        fi
+    done
+
+    if ((${#want[@]} > 0)); then
+        apt_install "${want[@]}"
+        log_ok "extra ROS packages installed: ${want[*]}"
+    fi
+
+    if ((${#missing[@]} > 0)); then
+        log_warn "not released for ${VXO_ROS_DISTRO}, skipped: ${missing[*]}"
+        log_warn "Build them from source in $VXO_ROS_WS/src if you need them now."
+    fi
+}
+
+# apt candidate exists for a package name?
+_vxo_ros_apt_available() {
+    [[ "${VXO_DRY_RUN:-0}" == "1" ]] && return 0
+    local cand
+    cand="$(apt-cache policy "$1" 2>/dev/null | awk '/Candidate:/ {print $2}')"
+    [[ -n "$cand" && "$cand" != "(none)" ]]
 }
 
 # ─────────────────────────── workspace ───────────────────────────
@@ -107,9 +158,9 @@ _vxo_ros_workspace_dirs() {
 
 _vxo_ros_clone_repos() {
     local base via
-    # Probes GitHub when the git-ssh stage didn't run in this invocation. That is
-    # exactly the documented `--only=ros2` retry path, where trusting the default
-    # VXO_SSH_OK=0 would clone every repo over HTTPS on a working-key machine.
+    # SSH is a verified precondition of every real install, so this is SSH unless
+    # the run used --skip-ssh-check. The declare -F guard keeps this module
+    # sourceable on its own, without ssh_github.sh.
     if declare -F vxo_use_ssh_remotes >/dev/null && vxo_use_ssh_remotes; then
         base="git@github.com:"; via="SSH"
     else
@@ -130,9 +181,10 @@ _vxo_ros_clone_repos() {
     if ((failed > 0)); then
         log_warn "$failed of ${#VXO_ROS_REPOS[@]} repos could not be fetched."
         if [[ "$via" == "SSH" ]]; then
-            log_warn "Check that your SSH key is registered at https://github.com/settings/keys"
+            log_warn "Your key authenticates to GitHub, so this is probably a permissions"
+            log_warn "problem: ask in #software to be added to the VortexNTNU organisation."
         else
-            log_warn "Private repos need SSH. Re-run ./install.sh --only=git-ssh, then --only=ros2"
+            log_warn "These repos are private and need SSH. Re-run without --skip-ssh-check."
         fi
     fi
 }

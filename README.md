@@ -12,6 +12,51 @@ Ubuntu 26.04 · stock GNOME · ROS 2 Lyrical Luth
 
 ---
 
+## Before you start: the checklist
+
+Work through this list first. The installer checks items 1 and 3 itself and
+refuses to run if either is missing, so getting them right now saves you a
+failed run later.
+
+| # | You need | How to check | If you don't have it |
+|---|---|---|---|
+| 1 | **Ubuntu 26.04**, freshly installed | `lsb_release -r` prints `26.04` | [Step 0](#step-0-install-ubuntu-first) below |
+| 2 | **An account with sudo** | `sudo true` succeeds | Use the account you created during Ubuntu setup |
+| 3 | **A working GitHub SSH key** | `ssh -T git@github.com` greets you by username | [GitHub's SSH guide](https://docs.github.com/en/authentication/connecting-to-github-with-ssh) |
+| 4 | **Membership of the `vortexntnu` GitHub org** | You can open [vortex-auv](https://github.com/vortexntnu/vortex-auv) | Ask in the `#software` channel |
+| 5 | **A wired or stable connection, and time** | | Budget 20 to 30 minutes, or 60 to 90 with ROS 2 |
+| 6 | **Nothing precious in your home directory** | | This is meant for a fresh install. Existing files are backed up, not deleted, but don't test that on your only copy |
+
+### On the SSH key
+
+This is the one people get stuck on, so to be explicit: **the installer does not
+set up your SSH key for you.** It checks that you already have a working one and
+stops if you don't.
+
+That is deliberate. Everything worth installing here lives behind a
+`git@github.com` remote, and several VortexNTNU repositories are private. An
+installer that shrugged and cloned over HTTPS would hand you a half-empty
+workspace and a build that fails an hour later for reasons that look nothing
+like the actual cause.
+
+Your key is working when this prints your username:
+
+```bash
+ssh -T git@github.com
+# Hi <your-username>! You've successfully authenticated, but GitHub does not provide shell access.
+```
+
+If it doesn't, follow GitHub's guide start to finish. It covers generating the
+key, adding it to the agent, and registering it on your account:
+
+**https://docs.github.com/en/authentication/connecting-to-github-with-ssh**
+
+Item 4 matters separately. A key that authenticates fine still can't clone a
+private repository you have no access to, and that failure shows up as a
+handful of skipped repos near the end of the ROS 2 stage.
+
+---
+
 ## Step 0: install Ubuntu first
 
 **Before you run anything in this repo, you need Ubuntu on the machine.**
@@ -80,6 +125,8 @@ Every prompt has a matching flag, so the whole thing works in CI or over SSH:
 --profile=vortex|personal  Which profile to install
 --ros / --no-ros           Install ROS 2 (personal profile only)
 --skip-ros-build           Install ROS 2 but stop before rosdep and colcon
+--skip-ssh-check           Skip the GitHub SSH precondition, clone over HTTPS
+                           (automated testing only)
 --editor=nvim|vscode       Editor to install
 --browser=chrome|vivaldi|firefox
 --logo=PATH|URL            Personal-profile fastfetch splash image
@@ -99,7 +146,7 @@ Every prompt has a matching flag, so the whole thing works in CI or over SSH:
 
 ## What it installs, in order
 
-The installer runs twelve stages. Every one is idempotent, so running it again
+The installer runs thirteen stages. Every one is idempotent, so running it again
 is safe, and every one is checkpointed, so a failure never costs you the stages
 that already succeeded.
 
@@ -123,16 +170,47 @@ system default through `update-alternatives`. No PPA is involved.
 > codebase where that matters. The version is a single named constant in
 > `lib/toolchain.sh`, so bump it deliberately rather than by accident.
 
-### 4. `git-ssh`: git identity and GitHub key
-Sets your git name, email and defaults. Then it checks whether you already have
-a working GitHub SSH key. If you don't, it generates an ed25519 key, shows you
-the public half, and opens GitHub's "add SSH key" page so you can paste it in.
-It waits for you to confirm, then verifies the key actually authenticates.
+### 4. `cxx-libs`: Eigen and CasADi
+The two C++ maths libraries Vortex code is built on. They are installed
+differently, and the difference is deliberate.
 
-This matters because the Neovim config and all eight ROS repositories are cloned
-over SSH. If you skip it, the installer falls back to HTTPS for public repos.
+**Eigen** comes from apt (`libeigen3-dev`, currently 3.4.0). It is header-only,
+and more importantly it is the exact build every ROS 2 package in the archive
+was compiled against. A second Eigen in `/usr/local` wins the CMake search and
+leaves half your packages compiled against one version and their dependencies
+against another. That shows up as random segfaults, not build errors, so the
+installer checks for a stray copy and warns you about it.
 
-### 5. `shortcuts`: GNOME keybindings
+**CasADi** is built from source, pinned to a version named in `lib/cxxlibs.sh`.
+The apt package works, but Debian strips the vendored solvers out of it:
+
+| In the apt build | Missing from it |
+|---|---|
+| `nlpsol_ipopt`, `sqpmethod`, `scpgen`, `qrsqp` | `conic_osqp`, `conic_qpoases` |
+| `conic_qrqp`, `conic_ipqp` | `integrator_cvodes`, `integrator_idas` (SUNDIALS) |
+| `integrator_rk`, `integrator_collocation` | the HSL linear solvers |
+
+Code asking for `cvodes` or `osqp` compiles against the apt build perfectly and
+then fails at *runtime* with a plugin-not-found error, typically an hour into a
+mission test. The source build enables IPOPT (from apt), plus CasADi's own
+bundled SUNDIALS, OSQP and qpOASES, and then compiles and runs a test program
+that actually loads all three plugins before calling the stage done.
+
+Budget 10 to 20 minutes. The stage is soft, so a failed build costs you nothing
+else, and the result is stamped so a re-run is instant:
+
+```bash
+./install.sh --only=cxx-libs
+```
+
+### 5. `git-config`: git identity
+Sets your git name, email, default branch, rebase-on-pull and editor.
+
+Note what this stage does *not* do: it does not touch SSH. A working GitHub key
+is checked once, before any stage runs, and a missing one stops the installer
+outright. See [the checklist](#before-you-start-the-checklist).
+
+### 6. `shortcuts`: GNOME keybindings
 | Shortcut | Action |
 |---|---|
 | `Super` + `1` … `4` | Switch to workspace 1 to 4 |
@@ -156,7 +234,7 @@ Workspaces are switched to static, fixed at 4, and GNOME's conflicting `Super+N`
 > schema stubs left behind by previous dconf imports, and they otherwise break
 > the Settings UI silently.
 
-### 6. `bashrc`: shell configuration
+### 7. `bashrc`: shell configuration
 Installs the managed `.bashrc` and `.bash_aliases`, backing up whatever was
 there, installs NVM, and creates `~/code/ros2_ws`.
 
@@ -205,7 +283,7 @@ and `highlight_variable=` to empty.
 > Cargo and colcon sourcing is all guarded by existence checks. An interactive
 > shell stays around 200 ms instead of the ~1 s an eager config costs.
 
-### 7. `kitty-fastfetch`: terminal
+### 8. `kitty-fastfetch`: terminal
 Kitty with the Catppuccin Mocha theme, and fastfetch configured to print a
 system summary with a logo rendered through Kitty's graphics protocol.
 
@@ -215,7 +293,7 @@ sticker for `personal`, or your own image if you supplied one.
 fastfetch runs only for the *first* Kitty window, so opening a second tab
 doesn't reprint the whole banner.
 
-### 8. `wallpaper`: desktop background (personal profile only)
+### 9. `wallpaper`: desktop background (personal profile only)
 A rotating slideshow of four Porsche 911 GT3 RS wallpapers, to match the GT3 RS
 terminal splash. A GNOME slideshow XML rotates them every 30 minutes with a
 5-second cross-fade, and the set registers itself in **Settings → Appearance**
@@ -238,7 +316,7 @@ doesn't revert when the theme switches.
 > cars. Your previous wallpaper setting is saved to
 > `~/.local/state/vortex-onboarding/backups/` before anything changes.
 
-### 9. `editor`: Neovim or VS Code
+### 10. `editor`: Neovim or VS Code
 **Neovim** comes from the official release tarball, because the Ubuntu archive
 version is too old for a modern config. Then `Q3rkses/nvimconf` is cloned to
 `~/.config/nvim` and plugins are synced headlessly, so your first real launch is
@@ -247,19 +325,32 @@ instant instead of a three-minute plugin download.
 **VS Code** comes from Microsoft's apt repository, never the snap. Having both
 of them fighting over updates is a mess you only debug once.
 
-### 10. `browser`: Chrome, Vivaldi or Firefox
+### 11. `browser`: Chrome, Vivaldi or Firefox
 All three come from the vendor's official apt repo. For Firefox that means an
 apt pin which beats Ubuntu's transitional package, so you get the real `.deb`
 and not the snap.
 
-### 11. `rust` (personal profile only)
+### 12. `rust` (personal profile only)
 `rustup` with the stable toolchain plus `rust-analyzer`, `clippy` and `rustfmt`.
 It uses rustup rather than apt so you can pin and switch toolchains later.
 
-### 12. `ros2`: ROS 2 Lyrical Luth, deliberately last
-Installs `ros-lyrical-desktop` and the dev tooling, creates `~/code/ros2_ws/src`,
-clones the eight Vortex repositories, drops in the utility scripts, resolves
-dependencies with `rosdep`, and builds with `colcon`.
+### 13. `ros2`: ROS 2 Lyrical Luth, deliberately last
+Installs `ros-lyrical-desktop` and the dev tooling, adds YASMIN, creates
+`~/code/ros2_ws/src`, clones the eight Vortex repositories, drops in the utility
+scripts, resolves dependencies with `rosdep`, and builds with `colcon`.
+
+**YASMIN** is the finite state machine library mission logic is written against.
+Three packages come from the ROS apt index rather than the workspace, so they
+get security updates with everything else and don't lengthen your colcon build:
+
+| Package | What it gives you |
+|---|---|
+| `ros-lyrical-yasmin` | the state machine core |
+| `ros-lyrical-yasmin-ros` | ROS 2 integration: action, service and topic states |
+| `ros-lyrical-yasmin-viewer` | the web UI that draws the running state machine, which is the fastest way to see why a mission is stuck |
+
+A package not yet released for Lyrical is reported as a warning and skipped, not
+treated as a failure.
 
 | Repository | Branch |
 |---|---|
@@ -297,10 +388,14 @@ Logs: `~/.local/state/vortex-onboarding/logs/`
 Backups: `~/.local/state/vortex-onboarding/backups/`
 State: `~/.local/state/vortex-onboarding/install_state`
 
-The `git-ssh`, `shortcuts`, `kitty-fastfetch`, `wallpaper`, `editor`, `browser`,
+The `cxx-libs`, `shortcuts`, `kitty-fastfetch`, `wallpaper`, `editor`, `browser`,
 `rust` and `ros2` stages are **soft**. If one of them fails the installer reports
 it and carries on with the rest, instead of leaving you with a half-configured
 machine.
+
+The two preconditions are the opposite: an unsupported Ubuntu release or a
+GitHub SSH key that doesn't authenticate stops the installer before it changes
+anything at all.
 
 ---
 
@@ -378,11 +473,28 @@ The script can't press keys for you, so confirm these yourself:
 - [ ] `nvim` opens with your config, plugins load, and there's no error banner
       on startup
 - [ ] `gcc --version` reports 13.x
+- [ ] CasADi resolves the plugins the apt build lacks:
+      ```bash
+      cat > /tmp/c.cpp <<'EOF'
+      #include <casadi/casadi.hpp>
+      #include <Eigen/Dense>
+      int main() {
+          casadi::SX t = casadi::SX::sym("t");
+          casadi::integrator("i", "cvodes", casadi::SXDict{{"x", t}, {"ode", -t}}, 0, 1);
+          casadi::conic("q", "osqp", casadi::SpDict{{"h", casadi::Sparsity::dense(1, 1)}});
+          Eigen::Matrix2d m; m << 1, 2, 3, 4;
+          return m.determinant() == -2 ? 0 : 1;
+      }
+      EOF
+      g++ -std=c++17 /tmp/c.cpp -I/usr/include/eigen3 -lcasadi -o /tmp/c && /tmp/c && echo OK
+      ```
 - [ ] Your browser launches from the Activities overview
 - [ ] Personal profile only: the desktop background is a GT3 RS
 - [ ] Personal profile only: `cargo --version` works
 - [ ] With ROS: `ros2 doctor` reports no errors, and
       `ros2 run demo_nodes_cpp talker` prints messages
+- [ ] With ROS: YASMIN is importable, `python3 -c "import yasmin, yasmin_ros"`,
+      and `ros2 run yasmin_viewer yasmin_viewer_node` starts the web viewer
 
 ---
 
@@ -396,7 +508,8 @@ onboarding/
 │   ├── prompts.sh             argument parsing and interactive Q&A
 │   ├── base.sh                apt upgrade, base packages, font, starship
 │   ├── toolchain.sh           GCC 13
-│   ├── ssh_github.sh          git identity and GitHub SSH key
+│   ├── cxxlibs.sh             Eigen (apt) and CasADi (source build)
+│   ├── ssh_github.sh          GitHub SSH precondition and git identity
 │   ├── shortcuts.sh           GNOME keybindings
 │   ├── bashrc.sh              shell configuration and ble.sh
 │   ├── kitty_fastfetch.sh     terminal and splash

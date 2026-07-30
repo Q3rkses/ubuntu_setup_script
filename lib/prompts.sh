@@ -32,6 +32,16 @@ USAGE
 
     Run with no options for the guided interactive install.
 
+BEFORE YOU RUN THIS
+    1. Ubuntu 26.04, freshly installed.
+    2. An account with sudo.
+    3. A GitHub SSH key that works. Check with: ssh -T git@github.com
+       Set one up: https://docs.github.com/en/authentication/connecting-to-github-with-ssh
+    4. VortexNTNU members: ask to be added to the github.com/vortexntnu org.
+
+    The installer verifies 1 and 3 before it changes anything, and refuses to
+    run if either is missing.
+
 OPTIONS
     --name "First Last"        Full name (git config + welcome banner)
     --email you@example.com    Git email (optional; asked only if unset)
@@ -40,6 +50,9 @@ OPTIONS
                                the vortex profile always installs ROS 2)
     --skip-ros-build           Install ROS 2 and clone the workspace, but stop
                                before rosdep and colcon build
+    --skip-ssh-check           Skip the GitHub SSH precondition and clone over
+                               HTTPS. For automated testing only: private
+                               VortexNTNU repositories will fail to clone.
     --editor=nvim|vscode       Editor to install
     --browser=chrome|vivaldi|firefox
     --logo=PATH|URL            Personal-profile fastfetch splash image
@@ -84,6 +97,7 @@ parse_args() {
             --ros)         VXO_ROS=1; shift ;;
             --no-ros)      VXO_ROS=0; shift ;;
             --skip-ros-build) VXO_SKIP_ROS_BUILD=1; shift ;;
+            --skip-ssh-check) VXO_SKIP_SSH_CHECK=1; shift ;;
             -y|--yes)      VXO_NONINTERACTIVE=1; shift ;;
             --resume)      VXO_RESUME=1; shift ;;
             --dry-run)     VXO_DRY_RUN=1; shift ;;
@@ -100,6 +114,7 @@ parse_args() {
     esac
     export VXO_WALLPAPER_MODE="${VXO_WALLPAPER_MODE:-slideshow}"
     export VXO_SKIP_ROS_BUILD="${VXO_SKIP_ROS_BUILD:-0}"
+    export VXO_SKIP_SSH_CHECK="${VXO_SKIP_SSH_CHECK:-0}"
     export VXO_NONINTERACTIVE="${VXO_NONINTERACTIVE:-0}"
     export VXO_RESUME="${VXO_RESUME:-0}"
     export VXO_DRY_RUN="${VXO_DRY_RUN:-0}"
@@ -241,7 +256,8 @@ ${C_BOLD}Plan${C_RESET}
   Profile   ${C_CYAN}${VXO_PROFILE}${C_RESET}
   Editor    ${C_CYAN}${VXO_EDITOR}${C_RESET}
   Browser   ${C_CYAN}${VXO_BROWSER}${C_RESET}
-  ROS 2     ${C_CYAN}$([[ "$VXO_ROS" == "1" ]] && echo "Lyrical (last stage)" || echo "no")${C_RESET}
+  C++ libs  ${C_CYAN}Eigen (apt), CasADi ${VXO_CASADI_VERSION:-source} built with IPOPT/SUNDIALS/OSQP${C_RESET}
+  ROS 2     ${C_CYAN}$([[ "$VXO_ROS" == "1" ]] && echo "Lyrical + YASMIN (last stage)" || echo "no")${C_RESET}
   Splash    ${C_CYAN}$([[ -n "$VXO_LOGO_SRC" ]] && echo "$VXO_LOGO_SRC" || { [[ "$VXO_PROFILE" == "vortex" ]] && echo "Vortex logo" || echo "GT3 RS logo"; })${C_RESET}
   Wallpaper ${C_CYAN}$([[ "$VXO_PROFILE" == "personal" ]] && echo "GT3 RS ${VXO_WALLPAPER_MODE}" || echo "unchanged (vortex profile)")${C_RESET}
 

@@ -7,6 +7,10 @@
 # distro detection and no window-manager logic anywhere in this repo. ROS 2
 # requires Ubuntu 26.04 and runs last, as an isolated failure domain.
 #
+# Preconditions you must satisfy before running this (see the checklist at the
+# top of README.md): Ubuntu 26.04, a sudo account, a working GitHub SSH key.
+# The installer verifies all three up front and refuses to start otherwise.
+#
 #   ./install.sh              guided install
 #   ./install.sh --help       all flags
 #   ./install.sh --resume     continue after a failure, skipping finished stages
@@ -21,7 +25,7 @@ source "$VXO_SELF_DIR/lib/common.sh"
 # shellcheck source=lib/prompts.sh
 source "$VXO_SELF_DIR/lib/prompts.sh"
 
-for _mod in base toolchain ssh_github shortcuts bashrc kitty_fastfetch wallpaper nvim browser rust ros2; do
+for _mod in base toolchain cxxlibs ssh_github shortcuts bashrc kitty_fastfetch wallpaper nvim browser rust ros2; do
     # shellcheck disable=SC1090
     source "$VXO_SELF_DIR/lib/${_mod}.sh"
 done
@@ -35,7 +39,8 @@ VXO_STAGES=(
     "apt-upgrade|System update (apt update && apt upgrade)|vxo_apt_upgrade|hard"
     "base-packages|Base packages, Nerd Font and starship|vxo_base_packages|hard"
     "toolchain|GCC/G++ 13 toolchain (pinned via update-alternatives)|vxo_toolchain|hard"
-    "git-ssh|Git identity and GitHub SSH key|vxo_git_ssh|soft"
+    "cxx-libs|Eigen (apt) and CasADi (built from source)|vxo_cxx_libs|soft"
+    "git-config|Git identity (name, email, defaults)|vxo_git_config|hard"
     "shortcuts|GNOME keyboard shortcuts|vxo_shortcuts|soft"
     "bashrc|Shell configuration (.bashrc, .bash_aliases)|vxo_bashrc|hard"
     "kitty-fastfetch|Kitty terminal and fastfetch splash|vxo_kitty_fastfetch|soft"
@@ -80,7 +85,12 @@ main() {
     fi
 
     banner
+
+    # Preconditions, checked before a single package is touched. Both of these
+    # exit rather than degrade: an unsupported release or a missing GitHub key
+    # produces a broken half-install that is worse than no install at all.
     require_ubuntu
+    vxo_require_github_ssh
 
     if [[ -n "$VXO_ONLY" ]]; then
         log_info "Running only: $VXO_ONLY"

@@ -117,8 +117,8 @@ _vxo_install_nvim_deps() {
 
 _vxo_clone_nvim_config() {
     local url="$VXO_NVIM_REPO_HTTPS" via="HTTPS"
-    # vxo_use_ssh_remotes probes GitHub when the git-ssh stage didn't run in this
-    # invocation (e.g. --only=editor); the declare -F guard keeps this module
+    # SSH is a verified precondition of every real install, so this is SSH unless
+    # the run used --skip-ssh-check. The declare -F guard keeps this module
     # sourceable on its own, without ssh_github.sh.
     if declare -F vxo_use_ssh_remotes >/dev/null && vxo_use_ssh_remotes; then
         url="$VXO_NVIM_REPO_SSH"; via="SSH"
