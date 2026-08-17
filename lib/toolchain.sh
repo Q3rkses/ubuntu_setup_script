@@ -43,7 +43,17 @@ _vxo_gcc_already_pinned() {
 }
 
 # apt candidate exists for a package name?
+#
+# Answers "yes" unconditionally during a dry run. apt_update_once is itself
+# dry-run-skipped, so on a fresh image /var/lib/apt/lists is empty and every
+# apt-cache query comes back negative. Without this guard the check below reads
+# that as "gcc-13 does not exist on this release" and `die`s, which made
+# `--dry-run` impossible to complete on exactly the fresh 26.04 it targets. That
+# matters more than it sounds: a dry run is the thing you do before wiping a
+# working machine. lib/ros2.sh:_vxo_ros_apt_available carries the same guard for
+# the same reason.
 _vxo_apt_available() {
+    [[ "${VXO_DRY_RUN:-0}" == "1" ]] && return 0
     local cand
     cand="$(apt-cache policy "$1" 2>/dev/null | awk '/Candidate:/ {print $2}')"
     [[ -n "$cand" && "$cand" != "(none)" ]]

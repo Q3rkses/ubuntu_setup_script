@@ -226,6 +226,152 @@ else
 
     check_custom kitty-term "<Super>Return" "Super+Enter opens kitty"
     check_custom wofi-drun  "<Super>r"      "Super+R opens the wofi launcher"
+
+    check_gsetting org.gnome.shell.keybindings show-screenshot-ui "<Super>s" \
+        "Super+S opens the screenshot UI"
+fi
+
+section "Desktop settings"
+
+# check_gsetting_soft: like check_gsetting, but a key this GNOME version does not
+# have reports SKIP. Used for everything GNOME has renamed between releases, so
+# the verifier does not manufacture failures on a newer shell.
+check_gsetting_soft() {
+    local schema="$1" key="$2" want="$3" desc="$4"
+    if ! gsettings writable "$schema" "$key" >/dev/null 2>&1; then
+        skip "$desc" "$schema $key does not exist on this GNOME version"
+        return 0
+    fi
+    check_gsetting "$schema" "$key" "$want" "$desc"
+}
+
+if ! command -v gsettings >/dev/null 2>&1; then
+    skip "Desktop settings" "gsettings not available"
+elif [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
+    skip "Desktop settings" "no session bus. Run this from a desktop session, not SSH."
+else
+    check_gsetting org.gnome.desktop.interface color-scheme "prefer-dark" \
+        "Dark mode enabled"
+
+    # Norwegian, US and Japanese, in that order. Checked by substring so the
+    # order of the other two does not make this brittle.
+    for src in "'no'" "'us'" "mozc-jp"; do
+        check_gsetting org.gnome.desktop.input-sources sources "$src" \
+            "Input source present: $src"
+    done
+
+    if dpkg-query -W -f='${Status}' ibus-mozc 2>/dev/null | grep -q '^install ok installed$'; then
+        pass "ibus-mozc installed" "the Japanese input source will appear in the switcher"
+    else
+        fail "ibus-mozc installed" "the Japanese source is configured but has no engine. Run ./install.sh --only=apps"
+    fi
+
+    check_gsetting org.gnome.desktop.peripherals.touchpad natural-scroll "true" \
+        "Touchpad natural scrolling"
+    check_gsetting org.gnome.mutter auto-maximize "false" \
+        "Windows do not auto-maximize"
+    check_gsetting org.gnome.mutter experimental-features "scale-monitor-framebuffer" \
+        "Fractional scaling available"
+    check_gsetting_soft org.gnome.shell.extensions.dash-to-dock dock-position "RIGHT" \
+        "Dock on the right edge"
+
+    section "GNOME extensions"
+
+    rwc_uuid="rounded-window-corners@fxgn"
+    rwc_schema="org.gnome.shell.extensions.rounded-window-corners-reborn"
+
+    if [[ -f "$HOME/.local/share/gnome-shell/extensions/$rwc_uuid/metadata.json" ]]; then
+        pass "Rounded corners extension installed" "$rwc_uuid"
+    else
+        fail "Rounded corners extension installed" "not in ~/.local/share/gnome-shell/extensions. Run ./install.sh --only=gnome-extensions"
+    fi
+
+    if gsettings get org.gnome.shell enabled-extensions 2>/dev/null | grep -q "$rwc_uuid"; then
+        pass "Rounded corners extension enabled" "listed in enabled-extensions"
+    else
+        fail "Rounded corners extension enabled" "not in org.gnome.shell enabled-extensions"
+    fi
+
+    # The radius is one member of an a{sv} dict, so match the member rather than
+    # trying to reproduce the whole GVariant literal.
+    if ! gsettings writable "$rwc_schema" global-rounded-corner-settings >/dev/null 2>&1; then
+        skip "Window corner radius" "the extension's schemas are not compiled, so its settings do not apply"
+    else
+        rwc_value="$(gsettings get "$rwc_schema" global-rounded-corner-settings 2>/dev/null)"
+        rwc_radius="$(sed -nE "s/.*'borderRadius': <?uint32 ([0-9]+)>?.*/\1/p" <<<"$rwc_value")"
+        if [[ -z "$rwc_radius" ]]; then
+            fail "Window corner radius" "could not read borderRadius from: $rwc_value"
+        elif ((rwc_radius >= 4 && rwc_radius <= 8)); then
+            pass "Window corner radius" "${rwc_radius}px"
+        else
+            fail "Window corner radius" "got ${rwc_radius}px, expected 4-8. Re-run with --rounded-radius=N"
+        fi
+    fi
+fi
+
+section "Boot splash"
+
+SPLASH_THEME="/usr/share/plymouth/themes/vortex-splash/vortex-splash.plymouth"
+
+if [[ ! -f "$SPLASH_THEME" ]]; then
+    fail "Boot splash theme installed" "$SPLASH_THEME is missing. Run ./install.sh --only=boot-splash"
+else
+    pass "Boot splash theme installed" "$SPLASH_THEME"
+
+    if [[ -f /usr/share/plymouth/themes/vortex-splash/watermark.png ]]; then
+        pass "Boot splash image staged" "watermark.png"
+    else
+        fail "Boot splash image staged" "watermark.png is missing, so the splash has no logo"
+    fi
+
+    # UseFirmwareBackground=true is exactly what makes stock Ubuntu keep showing
+    # the vendor's BGRT logo, so this is the check that the OEM badge is gone.
+    if grep -q '^UseFirmwareBackground=false' "$SPLASH_THEME"; then
+        pass "Manufacturer logo suppressed" "UseFirmwareBackground=false"
+    else
+        fail "Manufacturer logo suppressed" "the theme still uses the firmware (BGRT) background"
+    fi
+
+    active="$(update-alternatives --query default.plymouth 2>/dev/null | awk '/^Value:/ {print $2}')"
+    if [[ "$active" == "$SPLASH_THEME" ]]; then
+        pass "Boot splash selected" "default.plymouth → vortex-splash"
+    else
+        fail "Boot splash selected" "default.plymouth points at '${active:-nothing}'"
+    fi
+
+    # The alternative can be correct while the initramfs still carries the old
+    # theme, in which case nothing visible changes and it looks like the whole
+    # thing failed. This is the check that catches that.
+    if command -v lsinitramfs >/dev/null 2>&1; then
+        initrd="/boot/initrd.img-$(uname -r)"
+        if [[ ! -r "$initrd" ]]; then
+            skip "Boot splash is in the initramfs" "cannot read $initrd"
+        elif lsinitramfs "$initrd" 2>/dev/null | grep -q 'themes/vortex-splash'; then
+            pass "Boot splash is in the initramfs" "$(basename "$initrd")"
+        else
+            fail "Boot splash is in the initramfs" "run: sudo update-initramfs -u -k all"
+        fi
+    else
+        skip "Boot splash is in the initramfs" "lsinitramfs is not installed"
+    fi
+fi
+
+if grep -q 'splash' /etc/default/grub 2>/dev/null; then
+    pass "GRUB passes 'splash'" "the kernel hands the screen to Plymouth"
+else
+    fail "GRUB passes 'splash'" "add it to GRUB_CMDLINE_LINUX_DEFAULT, then: sudo update-grub"
+fi
+
+section "Apps and dev tools"
+
+for tool in docker btop tmux clangd clang-format shellcheck shfmt doxygen; do
+    check_cmd "$tool installed" "$tool"
+done
+
+if grep -qw docker < <(id -nG "${USER:-$(id -un)}" 2>/dev/null); then
+    pass "In the docker group" "docker works without sudo after the next login"
+else
+    fail "In the docker group" "docker needs sudo. Run ./install.sh --only=apps, then log out and back in"
 fi
 
 section "Editor"
@@ -413,8 +559,9 @@ cat <<EOF
 ${C_BOLD}Checks you have to make yourself${C_RESET}
 These cannot be verified from a script, so try them now:
 
-  1. Log out and back in first. GNOME keybindings and the login shell
-     environment only take effect in a fresh session.
+  1. ${C_BOLD}Reboot${C_RESET} first, not just log out. The boot splash lives in the
+     initramfs, Wayland cannot load a new shell extension into a running
+     session, and the docker group only applies to a fresh login.
   2. Press ${C_BOLD}Super+Enter${C_RESET}      → kitty opens, showing the fastfetch splash
      with the logo on the left and no missing-glyph boxes.
   3. Press ${C_BOLD}Super+2${C_RESET}, ${C_BOLD}Super+1${C_RESET} → the desktop switches between workspaces.
@@ -425,6 +572,14 @@ These cannot be verified from a script, so try them now:
   7. Run ${C_BOLD}nvim${C_RESET}               → the config loads with no error popups
      (or ${C_BOLD}code .${C_RESET} if you chose VS Code).
   8. Open a new terminal    → the starship prompt renders with icons.
+  9. During the reboot in step 1, watch the screen → your terminal splash
+     image appears with the spinner under it, in place of the manufacturer
+     badge. Note that the logo the firmware draws in the first second, before
+     GRUB, belongs to the UEFI and cannot be changed from Linux.
+ 10. Look at any window corner → softly rounded, not square, and the same
+     radius on a GTK4 app (Files) as on kitty.
+ 11. Press ${C_BOLD}Super+Space${C_RESET}      → the input switcher cycles Norwegian, US
+     and Japanese.
 
 EOF
 

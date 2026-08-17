@@ -65,6 +65,16 @@ _vxo_install_neovim_binary() {
         log_info "neovim $(nvim --version | head -1) is too old for the config, installing upstream stable"
     fi
 
+    # A dry run must not reach the network. Everything below fetches the stable
+    # tarball with a bare `curl` rather than through `run`, so without this guard
+    # `--dry-run` really downloads it and then `die`s when it cannot, which is
+    # both a surprise and a lie about what the real install would do.
+    if [[ "${VXO_DRY_RUN:-0}" == "1" ]]; then
+        log_info "[dry-run] would download the neovim stable tarball, unpack it into /opt"
+        log_info "[dry-run]   and link it as /usr/local/bin/nvim"
+        return 0
+    fi
+
     local arch; arch="$(dpkg --print-architecture)"
     if [[ "$arch" != "amd64" ]]; then
         log_warn "no upstream neovim tarball for architecture '$arch', falling back to apt"

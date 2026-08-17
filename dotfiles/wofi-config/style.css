@@ -121,6 +121,10 @@ window {
     color: @mauve;
 }
 
+/* GTK's CSS parser rejects `!important` on a colour value here: it reports
+ * "Junk at end of value for background-color" and then discards this whole
+ * rule. The declaration is already the most specific one for this state, so
+ * the keyword bought nothing and cost the rule. Do not add it back. */
 #entry:drop(active) {
-    background-color: @lavender !important;
+    background-color: @lavender;
 }

@@ -132,6 +132,8 @@ Every prompt has a matching flag, so the whole thing works in CI or over SSH:
 --logo=PATH|URL            Personal-profile fastfetch splash image
 --wallpaper=slideshow|static|none
                            Desktop wallpaper (personal profile)
+--no-boot-splash           Leave the Plymouth boot theme alone
+--rounded-radius=N         Window corner radius in pixels (default 6, 0 = off)
 --yes, -y                  Non-interactive: accept defaults, never prompt
 --resume                   Skip stages already recorded as complete
 --dry-run                  Print what would happen; change nothing
@@ -146,14 +148,43 @@ Every prompt has a matching flag, so the whole thing works in CI or over SSH:
 
 ## What it installs, in order
 
-The installer runs thirteen stages. Every one is idempotent, so running it again
-is safe, and every one is checkpointed, so a failure never costs you the stages
-that already succeeded.
+The installer runs seventeen stages. Every one is idempotent, so running it
+again is safe, and every one is checkpointed, so a failure never costs you the
+stages that already succeeded.
 
-### 1. `apt-upgrade`: system update
+Run order, which is what `./install.sh --list-stages` prints. The sections below
+describe each stage and are grouped by topic rather than by position, so use
+this table when the order itself is what you care about:
+
+| # | Stage | What it does |
+|---|---|---|
+| 1 | `apt-upgrade` | System update |
+| 2 | `base-packages` | Build tooling, Nerd Font, starship, wofi |
+| 3 | `toolchain` | GCC/G++ 13, pinned |
+| 4 | `cxx-libs` | Eigen and CasADi |
+| 5 | `apps` | Dev tools, Docker, GNOME front-ends, input methods |
+| 6 | `git-config` | Git identity |
+| 7 | `bashrc` | Shell configuration |
+| 8 | `kitty-fastfetch` | Terminal and splash |
+| 9 | `boot-splash` | Plymouth boot logo |
+| 10 | `editor` | Neovim or VS Code |
+| 11 | `browser` | Chrome, Vivaldi or Firefox |
+| 12 | `shortcuts` | GNOME keybindings |
+| 13 | `desktop` | Appearance, input sources, pointer, dock |
+| 14 | `gnome-extensions` | Rounded window corners |
+| 15 | `wallpaper` | Desktop background |
+| 16 | `rust` | rustup toolchain |
+| 17 | `ros2` | ROS 2 Lyrical and the workspace |
+
+Two orderings are load-bearing rather than arbitrary. `desktop` pins the dock
+favourites and only pins entries whose `.desktop` file already exists, so it has
+to follow `browser`, `editor` and `kitty-fastfetch`. `boot-splash` reuses
+whatever image fastfetch resolved, so it follows `kitty-fastfetch`.
+
+### `apt-upgrade`: system update
 `apt update && apt upgrade -y`. Everything else assumes a current system.
 
-### 2. `base-packages`: foundations
+### `base-packages`: foundations
 Build tooling (`build-essential`, `cmake`, `ninja-build`, `pkg-config`), CLI
 essentials (`fzf`, `ripgrep`, `fd`, `ranger`, `jq`, `wl-clipboard`), the
 JetBrainsMono Nerd Font, the starship prompt, and the `wofi` launcher.
@@ -161,7 +192,7 @@ JetBrainsMono Nerd Font, the starship prompt, and the `wofi` launcher.
 > The Nerd Font isn't optional. Without it the fastfetch splash, the starship
 > prompt and Neovim's status line all render as rows of ▯ boxes.
 
-### 3. `toolchain`: GCC 13
+### `toolchain`: GCC 13
 Installs `gcc-13` and `g++-13` from the Ubuntu 26.04 archive and makes them the
 system default through `update-alternatives`. No PPA is involved.
 
@@ -170,7 +201,7 @@ system default through `update-alternatives`. No PPA is involved.
 > codebase where that matters. The version is a single named constant in
 > `lib/toolchain.sh`, so bump it deliberately rather than by accident.
 
-### 4. `cxx-libs`: Eigen and CasADi
+### `cxx-libs`: Eigen and CasADi
 The two C++ maths libraries Vortex code is built on. They are installed
 differently, and the difference is deliberate.
 
@@ -203,14 +234,59 @@ else, and the result is stamped so a re-run is instant:
 ./install.sh --only=cxx-libs
 ```
 
-### 5. `git-config`: git identity
+**Relationship to `vortex-auv/scripts/install_casadi.sh`.** That script is the
+reference for *which* CasADi to build, and this stage pins the same commit it
+does. The pin is asserted by SHA rather than by tag, because a tag is a movable
+ref and matching it alone would not actually guarantee everyone builds the same
+source. The versions are identical: `refs/tags/3.7.2` resolves to exactly
+`f959d31`, the commit that script checks out. The apt dependency list here is
+that script's list, extended with what the enabled solvers additionally need.
+
+It diverges on exactly one axis. `install_casadi.sh` passes `WITH_IPOPT=OFF`,
+`WITH_OSQP=OFF`, `WITH_SUNDIALS=OFF` and `WITH_QPOASES=OFF`, which is the right
+call for a CI image that only needs CasADi to link. On a development machine it
+is the wrong default, for the reason above: the plugins resolve lazily at
+runtime, so asking for `cvodes` compiles cleanly and dies mid-mission. This stage
+turns all four on and then runs a program that loads them, so a missing plugin
+fails here rather than an hour later.
+
+### `apps`: dev tools and everyday applications
+Everything that is not part of another stage's job:
+
+| Group | Packages |
+|---|---|
+| C/C++ tooling | `clangd`, `clang-format`, `clang-tidy`, `doxygen`, `lcov` |
+| Shell tooling | `shellcheck`, `shfmt` |
+| Terminal | `btop`, `tmux`, `imagemagick` |
+| GNOME front-ends | `gnome-tweaks`, `gnome-shell-extension-manager` |
+| Fonts | `fonts-firacode` |
+| Input methods | `ibus`, `ibus-mozc` |
+| Containers | `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`, `docker-compose-plugin` |
+
+`clang-format` and `clang-tidy` are the same tools vortex-ci runs, so you get the
+same verdict locally that you will get on the pull request. `ibus-mozc` is the
+Japanese engine, and it is here rather than in the `desktop` stage because
+configuring the input source without installing the engine gives you a list
+entry that silently never appears in the switcher.
+
+Docker comes from Docker's own apt repo, not the archive's `docker.io`, because
+the archive package predates and omits the compose and buildx plugins. The stage
+also adds you to the `docker` group, which takes effect at your next login.
+
+> [!NOTE]
+> **No snap, no flatpak.** Every package here is apt, from the archive or from a
+> vendor repo. Adding a third packaging system means a third updater and a
+> sandbox to fight, so if something you want is missing, prefer the apt package
+> or `cargo install`, in that order.
+
+### `git-config`: git identity
 Sets your git name, email, default branch, rebase-on-pull and editor.
 
 Note what this stage does *not* do: it does not touch SSH. A working GitHub key
 is checked once, before any stage runs, and a missing one stops the installer
 outright. See [the checklist](#before-you-start-the-checklist).
 
-### 6. `shortcuts`: GNOME keybindings
+### `shortcuts`: GNOME keybindings
 | Shortcut | Action |
 |---|---|
 | `Super` + `1` … `4` | Switch to workspace 1 to 4 |
@@ -219,6 +295,7 @@ outright. See [the checklist](#before-you-start-the-checklist).
 | `Super` + `Q` | Close the focused window |
 | `Super` + `R` | Wofi application launcher |
 | `Super` + `↑` / `↓` | Maximise / unmaximise |
+| `Super` + `S` | Screenshot and screencast UI |
 
 Workspaces are switched to static, fixed at 4, and GNOME's conflicting `Super+N`
 "switch to application" bindings are cleared.
@@ -234,7 +311,69 @@ Workspaces are switched to static, fixed at 4, and GNOME's conflicting `Super+N`
 > schema stubs left behind by previous dconf imports, and they otherwise break
 > the Settings UI silently.
 
-### 7. `bashrc`: shell configuration
+> [!NOTE]
+> **On wofi and GNOME.** Wofi is built for `wlr-layer-shell`, a protocol GNOME
+> Shell does not implement and has no plans to. It detects this and falls back
+> to drawing as an ordinary window, logging `Compositor does not support
+> wlr_layer_shell protocol, switching to normal window mode`. It works, but it
+> is a normal window: it appears in the window list and does not take an
+> exclusive keyboard grab. Every popular Wayland launcher in this family
+> (`anyrun`, `sherlock`, `fuzzel`, `tofi`) has the same dependency and will not
+> draw at all on GNOME. A launcher that renders as a normal window, such as
+> `onagre`, is the option that actually fits this desktop.
+
+### `desktop`: appearance, input, pointer, dock
+The settings that make a fresh install feel like the machine you already had.
+Keybindings used to be the only desktop state that was reproduced, which meant a
+reinstall handed back the right shortcuts and a default everything-else.
+
+| Area | Setting |
+|---|---|
+| Appearance | Dark mode, magenta accent, weekday in the clock, battery percentage |
+| Input sources | Norwegian, US, Japanese (`mozc-jp`), in that order |
+| Touchpad | Natural scrolling, two-finger scrolling, reduced pointer speed |
+| Windows | No auto-maximise, no centre-on-open, fractional scaling enabled |
+| Dock | Right edge, not fixed, not full height, `Super+N` hotkeys off |
+| Favourites | Your chosen browser, Files, Kitty |
+
+Every write is guarded: a key this GNOME release does not have is skipped with a
+note rather than failing the stage. That matters because GNOME renames and
+removes settings between releases, and dark mode in particular moved from named
+Yaru theme variants to a native accent-colour key. Both mechanisms are attempted
+and whichever exists takes effect.
+
+Favourites are derived from the choices you made during the install, and only
+entries whose `.desktop` file actually exists get pinned, so the dock never shows
+a blank tile for a browser you did not install.
+
+Like `shortcuts`, this stage dumps `/org/gnome/` to
+`~/.local/state/vortex-onboarding/backups/` before touching anything.
+
+### `gnome-extensions`: rounded window corners
+Installs [Rounded Window Corners
+Reborn](https://extensions.gnome.org/extension/7048/rounded-window-corners-reborn/)
+and sets every window to a 6px radius. Change it with `--rounded-radius=N`;
+`--rounded-radius=0` leaves the extension installed but stops the rounding.
+
+The extension skips libadwaita apps by default, on the reasoning that GTK4 apps
+round themselves. That leaves a visibly mixed desktop, GTK4 apps at their own
+12px and everything else at yours, so this stage turns the skip off and lets the
+extension clip every window to one radius.
+
+Three things this stage does that a plain unzip does not:
+
+- **Asks the extension site which release matches your shell.** Extensions are
+  pinned to a GNOME Shell major version, so "latest" is frequently an extension
+  that silently refuses to load.
+- **Compiles the schemas.** An extension whose schemas are not compiled loads and
+  then throws on its first settings read, which looks exactly like an extension
+  that does nothing.
+- **Enables it through `gsettings`, not `gnome-extensions enable`.** Under
+  Wayland the running shell cannot be restarted, so it has not scanned the new
+  directory yet and `gnome-extensions enable` fails with "not found". Writing
+  `enabled-extensions` works now and takes effect at the next login.
+
+### `bashrc`: shell configuration
 Installs the managed `.bashrc` and `.bash_aliases`, backing up whatever was
 there, installs NVM, and creates `~/code/ros2_ws`.
 
@@ -283,7 +422,7 @@ and `highlight_variable=` to empty.
 > Cargo and colcon sourcing is all guarded by existence checks. An interactive
 > shell stays around 200 ms instead of the ~1 s an eager config costs.
 
-### 8. `kitty-fastfetch`: terminal
+### `kitty-fastfetch`: terminal
 Kitty with the Catppuccin Mocha theme, and fastfetch configured to print a
 system summary with a logo rendered through Kitty's graphics protocol.
 
@@ -293,7 +432,47 @@ sticker for `personal`, or your own image if you supplied one.
 fastfetch runs only for the *first* Kitty window, so opening a second tab
 doesn't reprint the whole banner.
 
-### 9. `wallpaper`: desktop background (personal profile only)
+### `boot-splash`: your logo at boot
+Replaces the logo shown while the machine boots with the same image your
+terminal splash uses. Disable with `--no-boot-splash`.
+
+**Why you currently see a manufacturer logo.** Ubuntu's default Plymouth theme is
+`bgrt`. BGRT is an ACPI table where the firmware parks the vendor logo it drew at
+power-on, and the whole purpose of the `bgrt` theme is to keep displaying it so
+the handoff from firmware to kernel looks seamless. That is why a stock Ubuntu
+boot shows a Dell or Lenovo badge rather than an Ubuntu one. The switch
+responsible is `UseFirmwareBackground=true`.
+
+This stage installs a sibling theme, `vortex-splash`, with the same spinner,
+`UseFirmwareBackground=false`, and your image as the watermark. It then points
+the `default.plymouth` alternative at it and rebuilds the initramfs.
+
+Two details that are easy to get wrong:
+
+- **The theme gets its own image directory** rather than reusing the spinner's.
+  Sharing it would mean overwriting `watermark.png`, which belongs to
+  `plymouth-theme-spinner`, so apt would restore it on the next upgrade and your
+  splash would quietly revert to the Ubuntu logo.
+- **The initramfs has to be rebuilt.** Plymouth starts before the root
+  filesystem is mounted, so it reads the theme out of the initramfs. Changing the
+  alternative without rebuilding changes nothing visible at all, which is the
+  single easiest way to conclude the whole thing failed.
+
+> [!IMPORTANT]
+> **One honest limit.** The logo the firmware itself paints between the power
+> button and GRUB belongs to your UEFI, lives in the firmware's own flash, and
+> nothing done from inside Linux can change it. What this stage controls is
+> everything from Plymouth onward, which in practice is all but the first second
+> or so. Replacing the firmware logo needs a vendor tool or a reflash, which is
+> not something an onboarding script should be doing.
+
+Reverse the whole thing with:
+```bash
+sudo update-alternatives --auto default.plymouth
+sudo update-initramfs -u
+```
+
+### `wallpaper`: desktop background (personal profile only)
 A rotating slideshow of four Porsche 911 GT3 RS wallpapers, to match the GT3 RS
 terminal splash. A GNOME slideshow XML rotates them every 30 minutes with a
 5-second cross-fade, and the set registers itself in **Settings → Appearance**
@@ -316,7 +495,7 @@ doesn't revert when the theme switches.
 > cars. Your previous wallpaper setting is saved to
 > `~/.local/state/vortex-onboarding/backups/` before anything changes.
 
-### 10. `editor`: Neovim or VS Code
+### `editor`: Neovim or VS Code
 **Neovim** comes from the official release tarball, because the Ubuntu archive
 version is too old for a modern config. Then `Q3rkses/nvimconf` is cloned to
 `~/.config/nvim` and plugins are synced headlessly, so your first real launch is
@@ -353,16 +532,16 @@ reads that file *instead of* `~/.profile`.
 Choosing `vscode` sets none of the environment variables. `code` returns
 instantly unless invoked with `--wait`, which would break git commits.
 
-### 11. `browser`: Chrome, Vivaldi or Firefox
+### `browser`: Chrome, Vivaldi or Firefox
 All three come from the vendor's official apt repo. For Firefox that means an
 apt pin which beats Ubuntu's transitional package, so you get the real `.deb`
 and not the snap.
 
-### 12. `rust` (personal profile only)
+### `rust` (personal profile only)
 `rustup` with the stable toolchain plus `rust-analyzer`, `clippy` and `rustfmt`.
 It uses rustup rather than apt so you can pin and switch toolchains later.
 
-### 13. `ros2`: ROS 2 Lyrical Luth, deliberately last
+### `ros2`: ROS 2 Lyrical Luth, deliberately last
 Installs `ros-lyrical-desktop` and the dev tooling, adds YASMIN, creates
 `~/code/ros2_ws/src`, clones the eight Vortex repositories, drops in the utility
 scripts, resolves dependencies with `rosdep`, and builds with `colcon`.
@@ -537,10 +716,14 @@ onboarding/
 │   ├── base.sh                apt upgrade, base packages, font, starship
 │   ├── toolchain.sh           GCC 13
 │   ├── cxxlibs.sh             Eigen (apt) and CasADi (source build)
+│   ├── apps.sh                dev tools, Docker, GNOME front-ends, input methods
 │   ├── ssh_github.sh          GitHub SSH precondition and git identity
 │   ├── shortcuts.sh           GNOME keybindings
+│   ├── desktop.sh             appearance, input sources, pointer, dock
+│   ├── extensions.sh          GNOME extensions (rounded window corners)
 │   ├── bashrc.sh              shell configuration and ble.sh
 │   ├── kitty_fastfetch.sh     terminal and splash
+│   ├── plymouth.sh            boot splash theme
 │   ├── wallpaper.sh           desktop background (personal profile)
 │   ├── nvim.sh                editor (Neovim or VS Code)
 │   ├── browser.sh             Chrome / Vivaldi / Firefox

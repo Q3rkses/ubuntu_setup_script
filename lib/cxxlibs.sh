@@ -20,6 +20,22 @@
 # mission test. Building from source with the bundled solvers enabled avoids the
 # whole class of problem.
 #
+# RELATIONSHIP TO vortex-auv/scripts/install_casadi.sh. That script is the
+# reference for WHICH CasADi to build, and this module now pins the same commit
+# it does, asserted by SHA rather than by tag so a retagged release cannot move
+# under us. The version is identical: refs/tags/3.7.2 resolves to exactly
+# f959d31, the commit that script checks out.
+#
+# It deliberately diverges on ONE axis. install_casadi.sh passes WITH_IPOPT=OFF,
+# WITH_OSQP=OFF, WITH_SUNDIALS=OFF and WITH_QPOASES=OFF, which is the right call
+# for a CI image that only needs CasADi to link. On a development machine it is
+# the wrong default, for the reason spelled out above: the plugins are resolved
+# lazily at runtime, so asking for cvodes or osqp compiles cleanly and then dies
+# in the middle of a mission test. This module turns all four ON and then
+# compiles and *runs* a program that loads them, so a missing plugin fails here
+# instead of an hour later. The apt dependency list is the script's, extended
+# with what the enabled solvers additionally need.
+#
 # This is why the stage is soft: the build is long and is the most likely thing
 # in the whole installer to fail on an odd machine. When it does, you keep your
 # dotfiles, your editor and your shell. Re-run it on its own with:
@@ -34,6 +50,13 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 # The one place the CasADi version is written down. Bump deliberately: everyone
 # who runs the installer after you gets this exact release.
 VXO_CASADI_VERSION="3.7.2"
+
+# The commit refs/tags/3.7.2 points at, and the exact commit
+# vortex-auv/scripts/install_casadi.sh checks out. Asserted after checkout: a
+# tag is a movable ref, so matching the tag alone would not actually guarantee
+# everyone builds the same source.
+VXO_CASADI_COMMIT="f959d3175a444d763e4eda4aece48f4c5f4a6f90"
+
 VXO_CASADI_REPO="https://github.com/casadi/casadi.git"
 VXO_CASADI_PREFIX="/usr/local"
 VXO_CASADI_SRC="${XDG_CACHE_HOME:-$HOME/.cache}/vortex-onboarding/casadi"
@@ -48,14 +71,25 @@ VXO_CASADI_STAMP="$VXO_STATE_DIR/casadi_built_version"
 # built from CasADi's own bundled copies instead: CasADi pins versions it is
 # tested against, and mixing a system SUNDIALS with CasADi's expectations is a
 # known source of build failures.
+# The first block is vortex-auv/scripts/install_casadi.sh's list verbatim, so a
+# machine set up here can build what CI builds. The second block is what the
+# solvers this module additionally enables need, and is the only reason the two
+# lists differ.
 VXO_CASADI_BUILD_DEPS=(
     build-essential
     cmake
     git
     pkg-config
-    gfortran
     libblas-dev
     liblapack-dev
+    libopenblas-dev
+    libgfortran5
+    libeigen3-dev
+    libboost-dev
+
+    # For WITH_IPOPT: IPOPT itself, its MUMPS linear solver, and the Fortran
+    # compiler SUNDIALS and MUMPS both want.
+    gfortran
     coinor-libipopt-dev
     libmumps-seq-dev
 )
@@ -177,6 +211,19 @@ _vxo_casadi_fetch() {
         log_error "CasADi tag $VXO_CASADI_VERSION not found in the checkout"
         return 1
     fi
+
+    # Tags are movable refs. Verifying the SHA is what actually makes this a pin,
+    # and is what keeps this module and vortex-auv's install_casadi.sh building
+    # provably identical source.
+    local head
+    head="$(git -C "$VXO_CASADI_SRC" rev-parse HEAD 2>/dev/null || true)"
+    if [[ "$head" != "$VXO_CASADI_COMMIT" ]]; then
+        log_error "CasADi tag $VXO_CASADI_VERSION resolves to ${head:-nothing}, expected $VXO_CASADI_COMMIT."
+        log_error "The upstream tag has moved. Verify the new commit and update"
+        log_error "VXO_CASADI_COMMIT in lib/cxxlibs.sh deliberately, rather than around this check."
+        return 1
+    fi
+    log_ok "CasADi source pinned at $VXO_CASADI_COMMIT (tag $VXO_CASADI_VERSION)"
 
     # SUNDIALS, OSQP and qpOASES live in external_packages as submodules. Without
     # this the WITH_BUILD_* flags below silently produce a CasADi with exactly

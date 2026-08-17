@@ -5,6 +5,92 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **`boot-splash` stage.** The boot logo is now your terminal splash image
+  instead of the manufacturer badge. Ubuntu defaults to the `bgrt` Plymouth
+  theme, whose entire purpose is to keep displaying the vendor logo the firmware
+  parked in the ACPI BGRT table, which is why a stock install shows a Dell or
+  Lenovo mark. This installs a sibling theme with the same spinner,
+  `UseFirmwareBackground=false`, and your image as the watermark, then repoints
+  the `default.plymouth` alternative and rebuilds the initramfs. The theme gets
+  its own image directory rather than reusing the spinner's, because sharing it
+  would mean overwriting a file owned by `plymouth-theme-spinner` that apt would
+  restore on the next upgrade. Disable with `--no-boot-splash`. The logo the
+  firmware itself draws before GRUB belongs to the UEFI and is out of reach from
+  Linux; this covers everything from Plymouth onward.
+- **`desktop` stage.** Reproduces the GNOME state a reinstall used to discard:
+  dark mode and accent colour, the Norwegian/US/Japanese input sources, touchpad
+  natural scrolling and pointer speeds, no auto-maximise, no centre-on-open,
+  fractional scaling, dock position, and dock favourites derived from the
+  choices made during the install. Keybindings were previously the only desktop
+  state that survived a reinstall. Every write is guarded, so a key this GNOME
+  release does not have is skipped with a note rather than failing the stage.
+- **`gnome-extensions` stage.** Installs Rounded Window Corners Reborn and sets
+  every window to a 6px radius, configurable with `--rounded-radius=N`. It asks
+  extensions.gnome.org which release matches the running shell, compiles the
+  schemas, and enables the extension by writing `enabled-extensions` rather than
+  calling `gnome-extensions enable`, which cannot work under Wayland because the
+  running shell has not scanned the new directory yet. The extension's default
+  of skipping libadwaita apps is turned off, so GTK4 windows get the same radius
+  as everything else instead of keeping their own 12px.
+- **`apps` stage.** clangd, clang-format, clang-tidy, doxygen, lcov, shellcheck,
+  shfmt, btop, tmux, imagemagick, gnome-tweaks, gnome-shell-extension-manager,
+  fonts-firacode, ibus-mozc, and Docker from Docker's own apt repo with the user
+  added to the `docker` group. All apt, no snap and no flatpak: a third
+  packaging system means a third updater and a sandbox to fight. `ibus-mozc`
+  ships here rather than in `desktop` because configuring the Japanese input
+  source without the engine gives a list entry that silently never appears.
+- `Super+S` now opens the screenshot UI, and the conflicting `toggle-overview`
+  binding is cleared so the two do not both claim it.
+- ROS 2 now installs the flake8 and pytest plugin set that `ament_flake8` and
+  `ament_pytest` load by name, plus numpy, scipy, matplotlib and pyserial.
+  Without the plugins a local lint passes and vortex-ci then fails on the same
+  code. Installed as a filtered batch so one renamed package cannot fail the
+  whole transaction and take ROS down with it.
+
+### Fixed
+- **`--dry-run` could not run to completion on the Ubuntu 26.04 it targets.**
+  `apt_update_once` is dry-run-skipped, so on a fresh image `/var/lib/apt/lists`
+  is empty and every `apt-cache` query comes back negative. `toolchain` read
+  that as "gcc-13 does not exist on this release" and called `die`, killing the
+  run at the third stage. This matters more than it sounds: a dry run is exactly
+  what you do before wiping a working machine.
+- `--dry-run` no longer reaches the network. The neovim tarball, the fastfetch
+  release lookup and the rustup installer were all invoked with a bare `curl`
+  rather than through `run`, so a dry run really downloaded them, and the neovim
+  one called `die` when it could not. `rust` additionally asserted that
+  `~/.cargo/bin/rustup` existed after an install it had only pretended to do.
+- A stage that bailed out in its dependency check was recorded as *done* rather
+  than skipped, because the caller returned 0 and `run_stage` reads that as
+  success. It would then be skipped by `--resume` having installed nothing.
+- With `--only`, the final summary listed every unselected stage as "not
+  completed" and told you to re-run all of them. A deliberate one-stage run now
+  reports only on the stage it was asked to run.
+- The wofi stylesheet failed to parse. GTK rejected `!important` on a colour
+  value with `Junk at end of value for background-color` and discarded the whole
+  `#entry:drop(active)` rule. Verified fixed against wofi itself.
+- `$USER` is no longer read bare under `set -u`. It is set by login shells, and
+  the installer routinely runs somewhere that is not one, where the reference is
+  an immediate unbound-variable abort rather than a wrong value.
+- `boot-splash` re-runs no longer rebuild the initramfs. It converged correctly
+  but restaged 127 files and spent 30 to 60 seconds producing a byte-identical
+  initramfs, which is not what "re-runs are cheap no-ops" means everywhere else.
+
+### Changed
+- CasADi is now pinned by commit SHA rather than by tag, asserted after
+  checkout, and the pin is the same commit
+  `vortex-auv/scripts/install_casadi.sh` checks out (`refs/tags/3.7.2` resolves
+  to exactly `f959d31`). A tag is a movable ref, so matching it alone never
+  actually guaranteed everyone built the same source. The apt dependency list is
+  now that script's list plus what the enabled solvers additionally need. The
+  one deliberate divergence: that script disables IPOPT, OSQP, SUNDIALS and
+  qpOASES, which is right for a CI image that only needs CasADi to link and
+  wrong on a development machine, where the plugins resolve lazily and a missing
+  one surfaces mid-mission rather than at build time.
+- Stage order changed. `shortcuts`, `desktop` and `gnome-extensions` now run
+  after `browser`, `editor` and `kitty-fastfetch`, because `desktop` only pins
+  dock favourites whose `.desktop` file already exists.
+
 ### Fixed
 - CasADi's bundled OSQP would not configure on Ubuntu 26.04. The release ships
   CMake 4, which dropped compatibility with `cmake_minimum_required(VERSION

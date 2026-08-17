@@ -59,6 +59,13 @@ OPTIONS
     --wallpaper=slideshow|static|none
                                Desktop wallpaper (personal profile).
                                Default: slideshow of the bundled GT3 RS images.
+    --no-boot-splash           Leave the Plymouth boot theme alone. By default
+                               the boot splash is replaced with the same image
+                               the terminal splash uses, instead of the
+                               manufacturer (BGRT) or Ubuntu logo.
+    --rounded-radius=N         Window corner radius in pixels for the rounded
+                               corners extension. Default: 6. 0 disables the
+                               rounding without uninstalling the extension.
     --yes, -y                  Non-interactive: accept defaults, never prompt
     --resume                   Skip stages already recorded as complete
     --dry-run                  Print what would happen; change nothing
@@ -94,6 +101,9 @@ parse_args() {
             --logo=*)      VXO_LOGO_SRC="${1#*=}"; shift ;;
             --wallpaper)   VXO_WALLPAPER_MODE="${2:?--wallpaper needs a value}"; shift 2 ;;
             --wallpaper=*) VXO_WALLPAPER_MODE="${1#*=}"; shift ;;
+            --no-boot-splash)  VXO_BOOT_SPLASH=0; shift ;;
+            --rounded-radius)  VXO_ROUNDED_RADIUS="${2:?--rounded-radius needs a value}"; shift 2 ;;
+            --rounded-radius=*) VXO_ROUNDED_RADIUS="${1#*=}"; shift ;;
             --ros)         VXO_ROS=1; shift ;;
             --no-ros)      VXO_ROS=0; shift ;;
             --skip-ros-build) VXO_SKIP_ROS_BUILD=1; shift ;;
@@ -113,6 +123,15 @@ parse_args() {
         *) die "Invalid --wallpaper: ${VXO_WALLPAPER_MODE} (expected slideshow, static or none)" ;;
     esac
     export VXO_WALLPAPER_MODE="${VXO_WALLPAPER_MODE:-slideshow}"
+
+    # Validated here rather than in lib/extensions.sh so a typo fails before the
+    # install starts, not forty minutes in when the extensions stage runs.
+    VXO_ROUNDED_RADIUS="${VXO_ROUNDED_RADIUS:-6}"
+    if ! [[ "$VXO_ROUNDED_RADIUS" =~ ^[0-9]+$ ]] || ((VXO_ROUNDED_RADIUS > 40)); then
+        die "Invalid --rounded-radius: '$VXO_ROUNDED_RADIUS' (expected a whole number, 0 to 40)"
+    fi
+    export VXO_ROUNDED_RADIUS
+    export VXO_BOOT_SPLASH="${VXO_BOOT_SPLASH:-1}"
     export VXO_SKIP_ROS_BUILD="${VXO_SKIP_ROS_BUILD:-0}"
     export VXO_SKIP_SSH_CHECK="${VXO_SKIP_SSH_CHECK:-0}"
     export VXO_NONINTERACTIVE="${VXO_NONINTERACTIVE:-0}"
@@ -258,8 +277,24 @@ ${C_BOLD}Plan${C_RESET}
   Browser   ${C_CYAN}${VXO_BROWSER}${C_RESET}
   C++ libs  ${C_CYAN}Eigen (apt), CasADi ${VXO_CASADI_VERSION:-source} built with IPOPT/SUNDIALS/OSQP${C_RESET}
   ROS 2     ${C_CYAN}$([[ "$VXO_ROS" == "1" ]] && echo "Lyrical + YASMIN (last stage)" || echo "no")${C_RESET}
-  Splash    ${C_CYAN}$([[ -n "$VXO_LOGO_SRC" ]] && echo "$VXO_LOGO_SRC" || { [[ "$VXO_PROFILE" == "vortex" ]] && echo "Vortex logo" || echo "GT3 RS logo"; })${C_RESET}
+  Splash    ${C_CYAN}$(_vxo_describe_splash)${C_RESET}
+  Boot logo ${C_CYAN}$([[ "${VXO_BOOT_SPLASH:-1}" == "1" ]] && echo "replaces the manufacturer/Ubuntu logo with the splash image" || echo "unchanged (--no-boot-splash)")${C_RESET}
   Wallpaper ${C_CYAN}$([[ "$VXO_PROFILE" == "personal" ]] && echo "GT3 RS ${VXO_WALLPAPER_MODE}" || echo "unchanged (vortex profile)")${C_RESET}
+  Corners   ${C_CYAN}$([[ "${VXO_ROUNDED_RADIUS:-6}" == "0" ]] && echo "square (--rounded-radius=0)" || echo "${VXO_ROUNDED_RADIUS:-6}px rounded, all windows")${C_RESET}
+  Desktop   ${C_CYAN}dark + magenta accent, en/no/jp input, dock right, 4 workspaces${C_RESET}
 
 EOF
+}
+
+# Split out of the heredoc above: `A && B || C` inside a command substitution is
+# not if-then-else (C also runs when A succeeds but B fails), and nesting two of
+# them made the one-liner both wrong and unreadable.
+_vxo_describe_splash() {
+    if [[ -n "${VXO_LOGO_SRC:-}" ]]; then
+        printf '%s' "$VXO_LOGO_SRC"
+    elif [[ "${VXO_PROFILE:-}" == "vortex" ]]; then
+        printf 'Vortex logo'
+    else
+        printf 'GT3 RS logo'
+    fi
 }

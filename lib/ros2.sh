@@ -36,6 +36,47 @@ VXO_ROS_EXTRA_PACKAGES=(
     yasmin-viewer
 )
 
+# Python packages the workspace needs beyond ros-<distro>-desktop.
+#
+# The flake8 plugins are not optional extras: ament_flake8 loads whichever of
+# them are installed, so a machine missing them passes a lint check that
+# vortex-ci then fails on for the same code. Same argument for the pytest
+# plugins, which ament_pytest's own test decorators import by name.
+#
+# The scientific set (numpy, scipy, matplotlib) is separate: it is what the
+# controller and navigation nodes import at runtime, and what the analysis
+# scripts in the workspace plot with. python3-serial is the stim300 driver's
+# transport.
+#
+# Deliberately apt, not pip. These end up on the same import path as the
+# apt-installed ROS packages that depend on them, and a pip copy in
+# ~/.local/lib shadowing an apt one is a genuinely nasty class of bug to debug
+# inside a colcon build.
+VXO_ROS_PYTHON_DEV=(
+    python3-argcomplete
+    python3-mypy
+
+    python3-flake8-blind-except
+    python3-flake8-builtins
+    python3-flake8-class-newline
+    python3-flake8-comprehensions
+    python3-flake8-deprecated
+    python3-flake8-docstrings
+    python3-flake8-import-order
+    python3-flake8-quotes
+
+    python3-pytest-cov
+    python3-pytest-mock
+    python3-pytest-repeat
+    python3-pytest-rerunfailures
+    python3-pytest-timeout
+
+    python3-numpy
+    python3-scipy
+    python3-matplotlib
+    python3-serial
+)
+
 # repo|branch. Add a line here to add a package to the workspace.
 VXO_ROS_REPOS=(
     "vortexntnu/vortex-auv|development"
@@ -105,11 +146,39 @@ _vxo_ros_packages() {
     run sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
     apt_install "ros-${VXO_ROS_DISTRO}-desktop"
     apt_install python3-colcon-common-extensions python3-rosdep python3-vcstool
+    _vxo_ros_python_dev
     _vxo_ros_extra_packages
 
     [[ -f "$VXO_ROS_SETUP" ]] \
         || die "ROS 2 packages installed but $VXO_ROS_SETUP is missing. The apt source may point at the wrong distro."
     log_ok "ROS 2 ${VXO_ROS_DISTRO} installed"
+}
+
+# The flake8/pytest/scientific Python set. Installed one filtered batch at a
+# time rather than as a single apt_install call: Ubuntu occasionally renames or
+# drops one of the smaller flake8 plugins between releases, and a single missing
+# package name would otherwise fail the whole transaction and take ROS down with
+# it. A plugin that no longer exists is worth a warning, not a failed install.
+_vxo_ros_python_dev() {
+    local pkg available=() missing=()
+
+    for pkg in "${VXO_ROS_PYTHON_DEV[@]}"; do
+        if _vxo_ros_apt_available "$pkg"; then
+            available+=("$pkg")
+        else
+            missing+=("$pkg")
+        fi
+    done
+
+    if ((${#available[@]} > 0)); then
+        apt_install "${available[@]}"
+    fi
+
+    if ((${#missing[@]} > 0)); then
+        log_warn "not in the archive for Ubuntu $(ubuntu_release), skipped: ${missing[*]}"
+        log_warn "ament_flake8 and ament_pytest load whichever plugins are present, so local"
+        log_warn "lint results may differ from vortex-ci for the missing ones."
+    fi
 }
 
 # YASMIN and anything else in VXO_ROS_EXTRA_PACKAGES.

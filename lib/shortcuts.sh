@@ -14,6 +14,7 @@
 #   Super+Q             close the focused window
 #   Super+R             wofi application launcher
 #   Super+Up/Down       maximize / unmaximize
+#   Super+S             the GNOME screenshot/screencast UI
 
 [[ -n "${_VXO_SHORTCUTS_SOURCED:-}" ]] && return 0
 _VXO_SHORTCUTS_SOURCED=1
@@ -35,6 +36,7 @@ vxo_shortcuts() {
     _vxo_workspaces_fixed
     _vxo_workspace_bindings
     _vxo_window_bindings
+    _vxo_shell_bindings
     _vxo_free_super_number_keys
     _vxo_custom_bindings
 
@@ -153,6 +155,21 @@ _vxo_window_bindings() {
     gset "$VXO_WM_SCHEMA" close       "$(_vxo_gv_array '<Super>q')"
     gset "$VXO_WM_SCHEMA" maximize    "$(_vxo_gv_array '<Super>Up')"
     gset "$VXO_WM_SCHEMA" unmaximize  "$(_vxo_gv_array '<Super>Down' '<Alt>F5')"
+}
+
+# GNOME Shell's own bindings, which live in a different schema from the window
+# manager's and are therefore easy to miss.
+_vxo_shell_bindings() {
+    local shell=org.gnome.shell.keybindings
+
+    # Super+S for the screenshot and screencast UI. GNOME's default is PrintScr,
+    # which several laptop keyboards only expose behind an Fn combination.
+    gset "$shell" show-screenshot-ui "$(_vxo_gv_array '<Super>s')"
+
+    # Super alone already opens the overview, so the extra toggle-overview
+    # binding (Super+S in some releases) is a collision waiting to happen with
+    # the screenshot binding above. Clear it rather than leave two owners.
+    gset "$shell" toggle-overview "@as []"
 }
 
 # GNOME Shell binds Super+1..9 to "launch/focus the Nth dash favourite", which

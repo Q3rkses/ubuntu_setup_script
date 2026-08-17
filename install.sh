@@ -25,7 +25,8 @@ source "$VXO_SELF_DIR/lib/common.sh"
 # shellcheck source=lib/prompts.sh
 source "$VXO_SELF_DIR/lib/prompts.sh"
 
-for _mod in base toolchain cxxlibs ssh_github shortcuts bashrc kitty_fastfetch wallpaper nvim browser rust ros2; do
+for _mod in base toolchain cxxlibs apps ssh_github shortcuts desktop extensions \
+            bashrc kitty_fastfetch plymouth wallpaper nvim browser rust ros2; do
     # shellcheck disable=SC1090
     source "$VXO_SELF_DIR/lib/${_mod}.sh"
 done
@@ -35,18 +36,29 @@ unset _mod
 # name | description | function | hard|soft. Order is the install order.
 # "soft" stages may fail without taking the rest of the install down with them.
 
+# Ordering notes, because two of these are load-bearing:
+#
+#   * `desktop` pins the dock favourites and only pins entries whose .desktop
+#     file already exists, so it has to run after `browser`, `editor` and
+#     `kitty-fastfetch` rather than before them.
+#   * `boot-splash` reuses the image fastfetch resolved, so it runs after
+#     `kitty-fastfetch`. It falls back to the bundled logo when run on its own.
 VXO_STAGES=(
     "apt-upgrade|System update (apt update && apt upgrade)|vxo_apt_upgrade|hard"
     "base-packages|Base packages, Nerd Font and starship|vxo_base_packages|hard"
     "toolchain|GCC/G++ 13 toolchain (pinned via update-alternatives)|vxo_toolchain|hard"
     "cxx-libs|Eigen (apt) and CasADi (built from source)|vxo_cxx_libs|soft"
+    "apps|Dev tools, Docker, GNOME front-ends, input methods|vxo_apps|soft"
     "git-config|Git identity (name, email, defaults)|vxo_git_config|hard"
-    "shortcuts|GNOME keyboard shortcuts|vxo_shortcuts|soft"
     "bashrc|Shell configuration (.bashrc, .bash_aliases)|vxo_bashrc|hard"
     "kitty-fastfetch|Kitty terminal and fastfetch splash|vxo_kitty_fastfetch|soft"
-    "wallpaper|Desktop wallpaper (personal profile)|vxo_wallpaper|soft"
+    "boot-splash|Plymouth boot splash (your terminal logo)|vxo_boot_splash|soft"
     "editor|Editor (Neovim or VS Code)|vxo_editor|soft"
     "browser|Web browser|vxo_browser|soft"
+    "shortcuts|GNOME keyboard shortcuts|vxo_shortcuts|soft"
+    "desktop|GNOME appearance, input sources, pointer, dock|vxo_desktop|soft"
+    "gnome-extensions|GNOME extensions (rounded window corners)|vxo_gnome_extensions|soft"
+    "wallpaper|Desktop wallpaper (personal profile)|vxo_wallpaper|soft"
     "rust|Rust toolchain via rustup (personal profile)|vxo_rust|soft"
     "ros2|ROS 2 Lyrical and the vortex workspace|vxo_ros2|soft"
 )
@@ -135,6 +147,11 @@ finish() {
     local entry name
     for entry in "${VXO_STAGES[@]}"; do
         IFS='|' read -r name _ _ _ <<<"$entry"
+        # With --only, the stages that were never selected are not "incomplete",
+        # they were not asked for. Listing them told the user to re-run thirteen
+        # stages after a deliberate one-stage run, which is noise that trains
+        # people to ignore this summary.
+        stage_selected "$name" || continue
         stage_done "$name" && continue
         if stage_was_skipped "$name"; then
             skipped+=("$name")
@@ -160,8 +177,12 @@ finish() {
 ${C_BOLD}${C_GREEN}Setup finished for ${VXO_NAME}.${C_RESET}
 
 Next steps:
-  1. ${C_BOLD}Log out and back in${C_RESET}. GNOME keyboard shortcuts and the new
-     default shell environment only apply to a fresh session.
+  1. ${C_BOLD}Reboot${C_RESET}. Three things need it rather than just a new session:
+       · the new boot splash (it lives in the initramfs)
+       · the rounded-corners extension (Wayland cannot reload the shell)
+       · your docker group membership
+     A logout would cover the shortcuts, theme and shell environment, but not
+     those, so reboot once here and be done with it.
   2. Open Kitty with ${C_BOLD}Super+Enter${C_RESET}. You should see the fastfetch splash.
   3. Run the verification checklist:
        ${C_CYAN}./tests/verify_install.sh${C_RESET}

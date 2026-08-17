@@ -73,6 +73,15 @@ _vxo_install_fastfetch() {
 
     log_info "fastfetch is not in the archive for Ubuntu $(ubuntu_release), using the upstream .deb instead"
 
+    # Same reasoning as lib/nvim.sh: the release lookup below is a bare `curl`
+    # against the GitHub API, so a dry run would really call it. Harmless but
+    # dishonest, and on a rate-limited network it reports a scary warning about
+    # a step the dry run was never going to perform.
+    if [[ "${VXO_DRY_RUN:-0}" == "1" ]]; then
+        log_info "[dry-run] would install the upstream fastfetch .deb from GitHub releases"
+        return 0
+    fi
+
     local arch; arch="$(dpkg --print-architecture)"
     if [[ "$arch" != "amd64" ]]; then
         log_warn "no prebuilt fastfetch .deb for architecture '$arch', skipping fastfetch"

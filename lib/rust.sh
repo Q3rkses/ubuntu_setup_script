@@ -40,6 +40,14 @@ _vxo_install_rustup() {
     run sh "$tmp/rustup-init.sh" -y --no-modify-path --default-toolchain stable
     rm -rf "$tmp"
 
+    # The post-condition only means anything after a real install. During a dry
+    # run nothing was written, so asserting it reports a failure for work that
+    # was deliberately not done.
+    if [[ "${VXO_DRY_RUN:-0}" == "1" ]]; then
+        log_info "[dry-run] would install rustup to $VXO_CARGO_HOME"
+        return 0
+    fi
+
     [[ -x "$(_vxo_rustup_bin)" ]] || die "rustup installation finished but $(_vxo_rustup_bin) is missing"
     log_ok "rustup installed"
 }
