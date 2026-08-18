@@ -26,21 +26,49 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 # ─────────────────────────── the settings ───────────────────────────
 
-# Appearance. Dark mode is set through BOTH color-scheme and the accent colour,
-# because Ubuntu moved from named Yaru theme variants (Yaru-magenta-dark) to a
-# native accent-colour key around GNOME 47. Whichever mechanism this release
-# actually has will take; the other is skipped.
-VXO_DESKTOP_ACCENT="magenta"
-VXO_DESKTOP_GTK_THEME="Yaru-magenta-dark"
-VXO_DESKTOP_ICON_THEME="Yaru-magenta"
+# Appearance. Two mechanisms have to agree, because Ubuntu moved from named Yaru
+# theme variants (Yaru-magenta-dark) to a native accent-colour key around
+# GNOME 47 without dropping the variants:
+#
+#   * accent-color   drives libadwaita/GTK4 apps and the shell on GNOME 47+.
+#   * gtk-theme      still drives GTK3 apps, which is most of the desktop's
+#     icon-theme    long tail.
+#
+# IMPORTANT, and the reason this used to half-work: accent-color is an ENUM, and
+# on Ubuntu 26.04 its members are blue, teal, green, yellow, orange, red, pink,
+# purple, slate and brown. There is no 'magenta'. Writing it made gsettings
+# reject the value and the desktop kept whatever accent it already had, silently.
+# Ubuntu's magenta is exposed upstream as 'pink', so that is what we write; the
+# Yaru-magenta* variants below carry the actual magenta tint for GTK3.
+VXO_DESKTOP_ACCENT="pink"
+
+# Theme table: VXO_THEME → color-scheme, GTK theme, icon theme.
+#
+# "dark-magenta" is Ubuntu's magenta Yaru on a dark base, i.e. the reference
+# machine. "dark-pink" keeps GNOME's own pink accent over the neutral dark Yaru,
+# so the colour shows up only where an accent belongs rather than tinting the
+# whole shell. "light" is the same magenta Yaru on a light base.
+_vxo_theme_spec() {
+    case "${VXO_THEME:-dark-magenta}" in
+        dark-magenta) printf "prefer-dark|Yaru-magenta-dark|Yaru-magenta-dark" ;;
+        dark-pink)    printf "prefer-dark|Yaru-dark|Yaru-dark" ;;
+        light)        printf "prefer-light|Yaru-magenta|Yaru-magenta" ;;
+        *)
+            log_warn "unknown theme '${VXO_THEME:-}', falling back to dark-magenta"
+            printf "prefer-dark|Yaru-magenta-dark|Yaru-magenta-dark"
+            ;;
+    esac
+}
 
 # Input sources, in switcher order. The FIRST entry is the default layout at
-# login. Norwegian leads because that is the physical keyboard.
+# login, and English (US) leads: it is what the installer's own prompts, every
+# code sample and most documentation assume, and a Norwegian layout that the
+# user did not ask for turns every bracket and slash into a hunt.
 #
 # The ibus entry needs the ibus-mozc package, which lib/apps.sh installs. Without
 # it this list still applies but the Japanese entry resolves to nothing and
 # quietly vanishes from the switcher, which looks exactly like a bug.
-VXO_DESKTOP_INPUT_SOURCES="[('xkb', 'no'), ('xkb', 'us'), ('ibus', 'mozc-jp')]"
+VXO_DESKTOP_INPUT_SOURCES="[('xkb', 'us'), ('xkb', 'no'), ('ibus', 'mozc-jp')]"
 
 # Pointer. Negative speeds are slower than the default; these are the values off
 # the reference machine, not guesses.
@@ -149,7 +177,11 @@ _vxo_theme_installed() {
 _vxo_desktop_appearance() {
     local iface=org.gnome.desktop.interface
 
-    gset_soft "$iface" color-scheme "'prefer-dark'"
+    local scheme gtk_theme icon_theme
+    IFS='|' read -r scheme gtk_theme icon_theme <<<"$(_vxo_theme_spec)"
+    log_info "theme: ${VXO_THEME:-dark-magenta} ($scheme, $gtk_theme)"
+
+    gset_soft "$iface" color-scheme "'$scheme'"
     gset_soft "$iface" clock-show-weekday "true"
     gset_soft "$iface" show-battery-percentage "true"
     gset_soft "$iface" font-hinting "'slight'"
@@ -172,17 +204,19 @@ _vxo_desktop_appearance() {
 
     # The older approach: a per-accent Yaru theme variant. Only set when the
     # theme is really installed, so this is a no-op on a release that dropped
-    # the variants in favour of accent-color above.
-    if _vxo_theme_installed "$VXO_DESKTOP_GTK_THEME" themes; then
-        gset_soft "$iface" gtk-theme "'$VXO_DESKTOP_GTK_THEME'"
+    # the variants in favour of accent-color above. The Yaru-* variants come
+    # from yaru-theme-gtk / yaru-theme-icon, which a stock Ubuntu desktop
+    # already has; a server or derivative image may not.
+    if _vxo_theme_installed "$gtk_theme" themes; then
+        gset_soft "$iface" gtk-theme "'$gtk_theme'"
     else
-        log_skip "GTK theme '$VXO_DESKTOP_GTK_THEME' is not installed (accent-color covers this on newer GNOME)"
+        log_skip "GTK theme '$gtk_theme' is not installed (accent-color covers this on newer GNOME)"
     fi
 
-    if _vxo_theme_installed "$VXO_DESKTOP_ICON_THEME" icons; then
-        gset_soft "$iface" icon-theme "'$VXO_DESKTOP_ICON_THEME'"
+    if _vxo_theme_installed "$icon_theme" icons; then
+        gset_soft "$iface" icon-theme "'$icon_theme'"
     else
-        log_skip "icon theme '$VXO_DESKTOP_ICON_THEME' is not installed"
+        log_skip "icon theme '$icon_theme' is not installed"
     fi
 }
 

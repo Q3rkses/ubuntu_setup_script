@@ -31,6 +31,7 @@ fi
 VXO_PROFILE="${VXO_PROFILE:-}"
 VXO_EDITOR="${VXO_EDITOR:-}"
 VXO_BROWSER="${VXO_BROWSER:-}"
+VXO_THEME="${VXO_THEME:-dark-magenta}"
 VXO_ROS="${VXO_ROS:-}"
 
 PASS=0; FAIL=0; SKIPPED=0
@@ -136,6 +137,23 @@ check_cmd "fzf installed"       fzf
 check_cmd "ripgrep installed"   rg
 check_cmd "git installed"       git
 
+# The Super+F launcher. `ulauncher-toggle` is what the keybinding runs, and it
+# only does anything when the daemon is already up, so all three are checked.
+check_cmd "ulauncher installed" ulauncher
+check_cmd "ulauncher-toggle on PATH" ulauncher-toggle
+
+if [[ -f "$HOME/.config/autostart/ulauncher.desktop" ]]; then
+    pass "ulauncher starts with the session" "$HOME/.config/autostart/ulauncher.desktop"
+else
+    fail "ulauncher starts with the session" "no autostart entry, so Super+F will do nothing after a reboot"
+fi
+
+if pgrep -u "$(id -u)" -f ulauncher >/dev/null 2>&1; then
+    pass "ulauncher is running" "Super+F will open it"
+else
+    fail "ulauncher is running" "the daemon is not up; log out and back in, or run: ulauncher --hide-window &"
+fi
+
 _starship_bin=""
 if [[ -x "$HOME/.local/bin/starship" ]]; then
     _starship_bin="$HOME/.local/bin/starship"
@@ -180,14 +198,28 @@ fi
 
 # Process substitution rather than a pipe: `grep -q` exits on the first match,
 # SIGPIPEs the writer, and `set -o pipefail` would turn that into a false negative.
-if [[ -f "$HOME/.local/share/blesh/ble.sh" ]]; then
+# Same search order the managed .bashrc uses: the installer's own ~/.local
+# build first, then a system-wide copy someone installed by hand.
+blesh_found=""
+for blesh_candidate in \
+    "$HOME/.local/share/blesh/ble.sh" \
+    /usr/local/share/blesh/ble.sh \
+    /usr/share/blesh/ble.sh
+do
+    if [[ -f "$blesh_candidate" ]]; then
+        blesh_found="$blesh_candidate"
+        break
+    fi
+done
+
+if [[ -n "$blesh_found" ]]; then
     if [[ -f "$HOME/.blerc" ]]; then
-        pass "ble.sh autosuggestions" "installed, configured via ~/.blerc"
+        pass "ble.sh autosuggestions" "$blesh_found, configured via ~/.blerc"
     else
-        fail "ble.sh autosuggestions" "ble.sh present but ~/.blerc is missing"
+        fail "ble.sh autosuggestions" "$blesh_found present but ~/.blerc is missing"
     fi
 else
-    fail "ble.sh autosuggestions" "$HOME/.local/share/blesh/ble.sh missing, so no inline suggestions"
+    fail "ble.sh autosuggestions" "no ble.sh under ~/.local, /usr/local or /usr, so no inline suggestions"
 fi
 
 if grep -qi "JetBrainsMono Nerd Font" < <(fc-list 2>/dev/null); then
@@ -287,7 +319,7 @@ else
     }
 
     check_custom kitty-term "<Super>Return" "Super+Enter opens kitty"
-    check_custom wofi-drun  "<Super>r"      "Super+R opens the wofi launcher"
+    check_custom ulauncher  "<Super>f"      "Super+F opens the ulauncher launcher"
 
     check_gsetting org.gnome.shell.keybindings show-screenshot-ui "<Super>s" \
         "Super+S opens the screenshot UI"
@@ -312,12 +344,24 @@ if ! command -v gsettings >/dev/null 2>&1; then
 elif [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
     skip "Desktop settings" "no session bus. Run this from a desktop session, not SSH."
 else
-    check_gsetting org.gnome.desktop.interface color-scheme "prefer-dark" \
-        "Dark mode enabled"
+    # The colour scheme follows the theme chosen at install time, so read the
+    # answer back rather than asserting one of the three is universally right.
+    want_scheme="prefer-dark"
+    case "$VXO_THEME" in
+        light) want_scheme="prefer-light" ;;
+        *)     want_scheme="prefer-dark" ;;
+    esac
+    check_gsetting org.gnome.desktop.interface color-scheme "$want_scheme" \
+        "Colour scheme matches the '$VXO_THEME' theme"
 
-    # Norwegian, US and Japanese, in that order. Checked by substring so the
-    # order of the other two does not make this brittle.
-    for src in "'no'" "'us'" "mozc-jp"; do
+    # accent-color is an enum without a 'magenta' member on 26.04; Ubuntu's
+    # magenta is upstream's 'pink'. See lib/desktop.sh.
+    check_gsetting_soft org.gnome.desktop.interface accent-color "pink" \
+        "Accent colour set"
+
+    # English (US) leads, then Norwegian, then Japanese. Checked by substring so
+    # the order of the other two does not make this brittle.
+    for src in "'us'" "'no'" "mozc-jp"; do
         check_gsetting org.gnome.desktop.input-sources sources "$src" \
             "Input source present: $src"
     done
@@ -640,7 +684,7 @@ These cannot be verified from a script, so try them now:
   4. With a window focused, press ${C_BOLD}Super+Shift+3${C_RESET} → the window moves to
      workspace 3; ${C_BOLD}Super+3${C_RESET} follows it there.
   5. Press ${C_BOLD}Super+Q${C_RESET}          → the focused window closes.
-  6. Press ${C_BOLD}Super+R${C_RESET}          → the wofi application launcher appears.
+  6. Press ${C_BOLD}Super+F${C_RESET}          → the ulauncher application launcher appears.
   7. Run ${C_BOLD}nvim${C_RESET}               → the config loads with no error popups
      (or ${C_BOLD}code .${C_RESET} if you chose VS Code).
   8. Open a new terminal    → the starship prompt renders with icons.

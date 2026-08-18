@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/base.sh: system update, base packages, Nerd Font, starship, wofi launcher.
+# lib/base.sh: system update, base packages, Nerd Font, starship, ulauncher.
 #
 # Sourced by install.sh. Provides: vxo_apt_upgrade, vxo_base_packages.
 
@@ -35,7 +35,6 @@ VXO_BASE_PACKAGES=(
     ripgrep
     fd-find
     ranger
-    wofi
     jq
     unzip
     fontconfig
@@ -65,7 +64,7 @@ vxo_base_packages() {
 
     _vxo_install_nerd_font
     _vxo_install_starship
-    _vxo_install_wofi_launcher
+    _vxo_install_ulauncher
 }
 
 # kitty, fastfetch and starship all render glyphs that plain JetBrains Mono does
@@ -141,17 +140,97 @@ _vxo_install_starship() {
     install_file "$VXO_DOTFILES/starship.toml" "$HOME/.config/starship.toml"
 }
 
-# The Super+R application launcher. The binding itself is set in shortcuts.sh;
-# this puts the script and its config in place.
-_vxo_install_wofi_launcher() {
-    install_file "$VXO_DOTFILES/wofi-drun" "$HOME/.local/bin/wofi-drun" 0755
+# ───────────────────────────── ulauncher ─────────────────────────────
 
-    local src="$VXO_DOTFILES/wofi-config"
-    [[ -d "$src" ]] || { log_warn "no wofi config bundled at $src, skipping"; return 0; }
+# The Super+F application launcher. The binding itself is set in shortcuts.sh;
+# this installs the launcher, its settings and its autostart entry.
+#
+# Not in the Ubuntu archive, so it comes from the upstream maintainer's PPA.
+# That is the only PPA this installer adds; see lib/apps.sh for the wider
+# distribution policy.
+VXO_ULAUNCHER_PPA="ppa:agornostal/ulauncher"
 
-    local f
-    for f in "$src"/*; do
-        [[ -f "$f" ]] || continue
-        install_file "$f" "$HOME/.config/wofi/$(basename "$f")"
-    done
+_vxo_install_ulauncher() {
+    _vxo_ulauncher_package
+    _vxo_ulauncher_config
+    _vxo_ulauncher_autostart
+}
+
+# add-apt-repository is idempotent, but it also runs its own `apt update` and
+# prompts on a tty, so guard on the sources file and pass -y.
+_vxo_ulauncher_package() {
+    if pkg_installed ulauncher; then
+        log_skip "ulauncher already installed"
+        return 0
+    fi
+
+    if [[ "${VXO_DRY_RUN:-0}" == "1" ]]; then
+        log_info "[dry-run] would add $VXO_ULAUNCHER_PPA and install ulauncher"
+        return 0
+    fi
+
+    # The PPA is a soft dependency of the whole stage: a Launchpad outage, or a
+    # release the PPA has no build for yet, must not cost the user their base
+    # packages. Everything below degrades to a warning.
+    if ! _vxo_ulauncher_ppa_present; then
+        apt_install software-properties-common
+        if ! run sudo add-apt-repository -y "$VXO_ULAUNCHER_PPA"; then
+            log_warn "could not add $VXO_ULAUNCHER_PPA, so ulauncher was not installed."
+            log_warn "Super+F will do nothing until you install it. Retry: ./install.sh --only=base-packages"
+            return 0
+        fi
+        # add-apt-repository already refreshed the lists it added; make the rest
+        # of the install reuse that instead of doing a second full update.
+        _VXO_APT_UPDATED=1
+    fi
+
+    if ! run sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ulauncher; then
+        log_warn "ulauncher failed to install from $VXO_ULAUNCHER_PPA (no build for Ubuntu $(ubuntu_release)?)."
+        log_warn "Super+F will do nothing until you install it."
+        return 0
+    fi
+
+    log_ok "ulauncher installed from $VXO_ULAUNCHER_PPA"
+}
+
+# Both the deb822 (.sources) and the legacy (.list) layouts, because 26.04 writes
+# the former and an upgraded machine may still carry the latter.
+_vxo_ulauncher_ppa_present() {
+    grep -rqs "ppa.launchpadcontent.net/agornostal/ulauncher" \
+        /etc/apt/sources.list.d/ /etc/apt/sources.list 2>/dev/null
+}
+
+# Written before the package is even guaranteed to be there: ulauncher reads
+# these at startup and rewrites the file on exit, so seeding it first is what
+# makes the first launch already look right.
+_vxo_ulauncher_config() {
+    install_file "$VXO_DOTFILES/ulauncher/settings.json" "$HOME/.config/ulauncher/settings.json"
+}
+
+# ulauncher must already be running for `ulauncher-toggle` (the Super+F command)
+# to show anything, so it has to start with the session.
+#
+# GDK_BACKEND=x11 is load-bearing under Wayland, not cargo cult: ulauncher's
+# window is an override-redirect popup that Wayland does not let a client
+# position, so the native-Wayland process starts and then never appears. Running
+# it through XWayland is upstream's own documented workaround.
+_vxo_ulauncher_autostart() {
+    install_file "$VXO_DOTFILES/ulauncher/ulauncher.desktop" \
+        "$HOME/.config/autostart/ulauncher.desktop"
+
+    # Start it now as well, so Super+F works in the current session rather than
+    # only after the next login the installer already asks for.
+    if [[ "${VXO_DRY_RUN:-0}" == "1" ]]; then
+        log_info "[dry-run] would start ulauncher for the current session"
+        return 0
+    fi
+
+    have ulauncher || return 0
+    if pgrep -u "$(id -u)" -f 'ulauncher' >/dev/null 2>&1; then
+        log_skip "ulauncher is already running"
+        return 0
+    fi
+
+    GDK_BACKEND=x11 setsid ulauncher --hide-window >/dev/null 2>&1 &
+    log_ok "ulauncher started (Super+F)"
 }

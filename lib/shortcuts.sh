@@ -12,7 +12,7 @@
 #   Super+Shift+1..4    move the focused window to workspace 1..4
 #   Super+Enter         open kitty
 #   Super+Q             close the focused window
-#   Super+R             wofi application launcher
+#   Super+F             ulauncher application launcher
 #   Super+Up/Down       maximize / unmaximize
 #   Super+S             the GNOME screenshot/screencast UI
 
@@ -207,6 +207,42 @@ _vxo_read_custom_list() {
     done
 }
 
+# Commands owned by an older revision of this installer, or by a hand-made
+# binding for the same job. Any registered custom binding running one of these
+# is removed and replaced by the definitions below.
+#
+# Both entries earn their place:
+#
+#   * wofi-drun was the Super+R launcher this installer shipped before
+#     ulauncher. Leaving it registered means a machine that has been through
+#     both versions answers Super+R with a launcher nobody configured any more.
+#   * ulauncher-toggle is what we are about to install ourselves. A hand-rolled
+#     binding for it almost always sits at a generic slug like `custom0`, and
+#     two custom bindings on <Super>f make GNOME pick one at random.
+VXO_RETIRED_COMMANDS=(
+    "$HOME/.local/bin/wofi-drun"
+    "wofi-drun"
+    "ulauncher-toggle"
+)
+
+# True when this path's command is one we are taking over, AND the path is not
+# the one we are about to write. The second half matters on a re-run: our own
+# binding runs ulauncher-toggle too, and retiring it would delete the shortcut
+# every single time.
+_vxo_is_retired() {
+    local path="$1" keep="$2"
+    [[ "$path" == "$keep" ]] && return 1
+
+    local cmd retired
+    cmd="$(_vxo_gv_unquote "$(gsettings get "$VXO_CUSTOM_SCHEMA:$path" command 2>/dev/null || echo "''")")"
+    [[ -n "$cmd" ]] || return 1
+
+    for retired in "${VXO_RETIRED_COMMANDS[@]}"; do
+        [[ "$cmd" == "$retired" ]] && return 0
+    done
+    return 1
+}
+
 # An orphan is a registered path whose schema carries neither a name nor a
 # command. It is the residue of a dconf dump from another machine or distro.
 # Left in place they show up as blank rows in Settings and can shadow real
@@ -234,33 +270,38 @@ _vxo_define_custom() {
 
 _vxo_custom_bindings() {
     if [[ "${VXO_DRY_RUN:-0}" == "1" ]]; then
-        log_info "[dry-run] would define custom keybindings: kitty-term (Super+Return), wofi-drun (Super+R)"
+        log_info "[dry-run] would define custom keybindings: kitty-term (Super+Return), ulauncher (Super+F)"
         return 0
     fi
 
     local -a existing=()
     _vxo_read_custom_list existing
 
-    # Prune orphans, keep everything else the user already had.
+    local ulauncher_slot="$VXO_CUSTOM_BASE/ulauncher/"
+
+    # Prune orphans and retired bindings, keep everything else the user had.
     local -a keep=()
     local path
     for path in "${existing[@]}"; do
         if _vxo_is_orphan "$path"; then
             log_warn "Pruning orphaned keybinding entry: $path"
             run dconf reset -f "$path"
+        elif _vxo_is_retired "$path" "$ulauncher_slot"; then
+            log_warn "Replacing superseded launcher keybinding: $path"
+            run dconf reset -f "$path"
         else
             keep+=("$path")
         fi
     done
 
-    local kitty_path wofi_path
+    local kitty_path ulauncher_path
     kitty_path="$(_vxo_define_custom kitty-term "Kitty (terminal)" "/usr/bin/kitty" "<Super>Return")"
-    wofi_path="$(_vxo_define_custom wofi-drun "Wofi (drun)" "$HOME/.local/bin/wofi-drun" "<Super>r")"
+    ulauncher_path="$(_vxo_define_custom ulauncher "Ulauncher" "ulauncher-toggle" "<Super>f")"
 
     # Append ours only if not already registered, so re-runs are no-ops and
     # unrelated user bindings survive.
     local p want
-    for want in "$kitty_path" "$wofi_path"; do
+    for want in "$kitty_path" "$ulauncher_path"; do
         local found=0
         for p in "${keep[@]}"; do
             [[ "$p" == "$want" ]] && { found=1; break; }

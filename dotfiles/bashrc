@@ -27,8 +27,17 @@ fi
 # bottom of the file (part 2). ble.sh replaces bash's line editor, so attaching
 # it before the rest of the rc has run would fight with starship's prompt hooks
 # and with the fzf key bindings. Splitting it is the documented, supported way.
+# The installer builds ble.sh into ~/.local. A system-wide copy under
+# /usr/local is checked as a fallback, because a machine that installed it by
+# hand before running this installer already has one there, and sourcing
+# neither would silently cost the autosuggestions this file is configured for.
+# First match wins: sourcing two copies would attach the line editor twice.
 if [ -f "$HOME/.local/share/blesh/ble.sh" ]; then
     . "$HOME/.local/share/blesh/ble.sh" --noattach
+elif [ -f /usr/local/share/blesh/ble.sh ]; then
+    . /usr/local/share/blesh/ble.sh --noattach
+elif [ -f /usr/share/blesh/ble.sh ]; then
+    . /usr/share/blesh/ble.sh --noattach
 fi
 
 # don't put duplicate lines or lines starting with space in the history.

@@ -85,6 +85,7 @@ at the start. The `colcon build` at the end is the slow part.
 | ROS 2? | yes / no | personal profile only |
 | Editor | `nvim` / `vscode` | nvim pulls in the full custom config and becomes your system editor |
 | Browser | `chrome` / `brave` / `vivaldi` / `firefox` | installed from the vendor's own apt repo |
+| Theme | `dark-magenta` / `dark-pink` / `light` | GNOME colour scheme, accent and Yaru variant |
 | Splash image | path or URL | personal profile only |
 | Git email | free text, optional | `git config user.email` |
 
@@ -110,6 +111,8 @@ Every prompt has a flag, so it works over SSH or in CI:
                            (automated testing only)
 --editor=nvim|vscode       Editor to install
 --browser=chrome|brave|vivaldi|firefox
+--theme=dark-magenta|dark-pink|light
+                           Desktop theme (default dark-magenta)
 --logo=PATH|URL            Personal-profile fastfetch splash image
 --wallpaper=slideshow|static|none
                            Desktop wallpaper (personal profile)
@@ -135,7 +138,7 @@ safe, and checkpointed, so a failure never costs you the stages before it.
 | # | Stage | What it does |
 |---|---|---|
 | 1 | `apt-upgrade` | `apt update && apt upgrade` |
-| 2 | `base-packages` | Build tooling, CLI essentials, JetBrainsMono Nerd Font, starship, wofi |
+| 2 | `base-packages` | Build tooling, CLI essentials, JetBrainsMono Nerd Font, starship, ulauncher |
 | 3 | `toolchain` | GCC/G++ 13, pinned and made default |
 | 4 | `cxx-libs` | Eigen from apt, CasADi built from source with IPOPT, SUNDIALS, OSQP and qpOASES |
 | 5 | `apps` | clangd, clang-format/tidy, shellcheck, btop, tmux, Docker, gnome-tweaks, ibus-mozc |
@@ -146,7 +149,7 @@ safe, and checkpointed, so a failure never costs you the stages before it.
 | 10 | `editor` | Neovim from the official tarball plus lazygit and the tools its config shells out to, or VS Code from Microsoft's repo |
 | 11 | `browser` | Chrome, Brave, Vivaldi or Firefox from the vendor's apt repo |
 | 12 | `shortcuts` | GNOME keybindings, static 4 workspaces |
-| 13 | `desktop` | Dark mode, magenta accent, input sources, touchpad, dock, monospace font |
+| 13 | `desktop` | Colour scheme and accent, input sources, touchpad, dock, monospace font |
 | 14 | `gnome-extensions` | Rounded window corners at 6px |
 | 15 | `wallpaper` | GT3 RS slideshow (personal profile) |
 | 16 | `rust` | rustup stable, rust-analyzer, clippy, rustfmt (personal profile) |
@@ -190,7 +193,7 @@ follows `kitty-fastfetch`.
 | `Super` + `Shift` + `1` … `4` | Move the window to workspace 1 to 4 |
 | `Super` + `Enter` | New Kitty terminal |
 | `Super` + `Q` | Close the focused window |
-| `Super` + `R` | Wofi launcher |
+| `Super` + `F` | Ulauncher application launcher |
 | `Super` + `↑` / `↓` | Maximise / unmaximise |
 | `Super` + `S` | Screenshot and screencast UI |
 
@@ -382,7 +385,7 @@ Then confirm the things a script cannot press keys for:
       logo as a real image, not ASCII art and not ▯ boxes
 - [ ] The prompt is starship with icons: distro logo, directory, git branch
 - [ ] **`Super` + `2`** switches workspace, **`Super` + `Shift` + `3`** moves a
-      window, **`Super` + `Q`** closes one, **`Super` + `R`** opens Wofi
+      window, **`Super` + `Q`** closes one, **`Super` + `F`** opens Ulauncher
 - [ ] `nvim` opens with your config and no error banner
 - [ ] `gcc --version` reports 13.x
 - [ ] Your browser launches from the Activities overview
@@ -450,7 +453,8 @@ onboarding/
 │   ├── browser.sh             Chrome / Brave / Vivaldi / Firefox
 │   ├── rust.sh                rustup (personal profile)
 │   └── ros2.sh                ROS 2 Lyrical (deferred to last)
-├── dotfiles/                  the actual .bashrc, aliases, kitty, fastfetch, blerc
+├── dotfiles/                  the actual .bashrc, aliases, kitty, fastfetch,
+│                              blerc, ulauncher
 ├── assets/                    logos, wallpapers, README screenshots
 ├── tests/verify_install.sh    post-install verification
 ├── tests/docker/              container test harness

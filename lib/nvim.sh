@@ -117,17 +117,62 @@ _vxo_install_neovim_binary() {
     log_ok "installed neovim: $(nvim --version 2>/dev/null | head -1)"
 }
 
-# Everything the config actually shells out to. mason builds the language
-# servers itself, which needs node, npm, unzip and a C compiler for the
-# treesitter parsers; the rest are tools the config's own keymaps invoke.
+# Everything the config actually shells out to, taken from nvimconf's own
+# README rather than guessed at. Grouped by what breaks without it:
 #
-# ripgrep/fd-find usually arrive with the base stage; apt_install is idempotent
-# so listing them again costs nothing and keeps this module runnable on its own
-# via --only=editor.
+#   ripgrep        <Leader>fw live grep. Snacks' grep picker has no fallback.
+#   fd-find        the file picker's finder.
+#   fzf            fuzzy matching for the pickers, and Ctrl+R in the shell.
+#   nodejs, npm    mason installs bash-language-server, prettier and lemminx
+#                  as npm packages. Without npm they fail at install time and
+#                  the LSP simply never attaches, with no error in the editor.
+#   python3-venv   mason builds basedpyright and any pip-backed tool inside a
+#                  venv. 26.04 is PEP 668 externally-managed, so without venv
+#                  every pip install is refused outright.
+#   python3-full   the stdlib pieces (tkinter, distutils successors) that
+#                  python3-minimal leaves out and that some tools import.
+#   unzip          mason unpacks most of its release archives with it.
+#   gdu            <Leader>tu disk-usage terminal.
+#   imagemagick    Snacks image preview and the markdown renderer.
+#   ghostscript    the PDF half of that preview pipeline.
+#   wl-clipboard   the system clipboard under Wayland. Without it "+y is a
+#                  silent no-op, which is the single most confusing failure
+#                  in this whole list.
+#   xclip          the same for an X11 session.
+#   xdg-utils      xdg-open, which gx and the markdown renderer use to open
+#                  links in the browser.
+#   git            lazy.nvim clones every plugin with it.
+#
+# build-essential is not listed here only because lib/base.sh and
+# lib/toolchain.sh both guarantee it; treesitter compiles every parser with
+# that C compiler, so it is a hard requirement of this stage too.
+#
+# Several of these usually arrive with the base stage. apt_install is
+# idempotent, so listing them again costs nothing and keeps this module
+# runnable on its own via --only=editor.
+VXO_NVIM_DEPS=(
+    git
+    ripgrep
+    fd-find
+    fzf
+    nodejs
+    npm
+    python3-venv
+    python3-full
+    unzip
+    gdu
+    imagemagick
+    ghostscript
+    wl-clipboard
+    xclip
+    xdg-utils
+)
+
 _vxo_install_nvim_deps() {
     apt_update_once
-    apt_install ripgrep fd-find python3-venv nodejs npm unzip gdu
+    apt_install "${VXO_NVIM_DEPS[@]}"
     _vxo_install_lazygit
+    _vxo_check_nvim_deps
 }
 
 # lazygit is not optional the way the rest are. AstroNvim gates <Leader>gg and
@@ -199,6 +244,47 @@ _vxo_install_lazygit() {
     else
         log_warn "lazygit still not on PATH after installing it"
     fi
+}
+
+# The mason tools in nvimconf are fetched at first launch, not by this
+# installer, so a missing interpreter shows up much later as "the LSP does not
+# work" rather than as an install failure. Say it now instead.
+_vxo_check_nvim_deps() {
+    _vxo_link_fd
+
+    local missing=() cmd
+    for cmd in node npm python3 rg fzf git; do
+        have "$cmd" || missing+=("$cmd")
+    done
+
+    if ((${#missing[@]} > 0)); then
+        log_warn "not on PATH after installing the editor dependencies: ${missing[*]}"
+        log_warn "mason will fail to install some language servers until they are."
+        return 0
+    fi
+
+    log_ok "all neovim runtime dependencies present"
+}
+
+# Ubuntu ships fd-find's binary as `fdfind`, because `fd` is taken by another
+# package. Every fd-aware nvim plugin looks for `fd`, finds nothing, and quietly
+# falls back to a slower finder or to none at all. A shim in ~/.local/bin is the
+# packaged workaround Debian itself documents.
+_vxo_link_fd() {
+    if have fd; then
+        log_skip "fd already on PATH"
+        return 0
+    fi
+
+    local fdfind; fdfind="$(command -v fdfind 2>/dev/null || true)"
+    if [[ -z "$fdfind" ]]; then
+        log_warn "neither fd nor fdfind is installed, so nvim's file picker will use its fallback finder"
+        return 0
+    fi
+
+    run mkdir -p "$HOME/.local/bin"
+    run ln -sfn "$fdfind" "$HOME/.local/bin/fd"
+    log_ok "linked $fdfind → ~/.local/bin/fd"
 }
 
 _vxo_clone_nvim_config() {

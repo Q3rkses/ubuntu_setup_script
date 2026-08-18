@@ -5,6 +5,65 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Ulauncher replaces wofi as the application launcher, on `Super+F`.** This
+  matches the reference machine, where wofi on `Super+R` had already been
+  replaced by hand. Ulauncher is not in the Ubuntu archive, so the
+  `base-packages` stage adds `ppa:agornostal/ulauncher` — the only PPA this
+  installer uses — and degrades to a warning rather than failing the stage if
+  Launchpad has no build for the release.
+
+  Three parts have to ship together or the launcher looks broken:
+
+  * `~/.config/ulauncher/settings.json`, seeded before first launch because
+    ulauncher rewrites the file on exit.
+  * `~/.config/autostart/ulauncher.desktop`, because `ulauncher-toggle` only
+    talks to an already-running daemon. Its `Exec` line forces
+    `GDK_BACKEND=x11`: ulauncher's window is an override-redirect popup that
+    Wayland gives a client no way to position, so the native-Wayland process
+    starts and then never appears.
+  * the `Super+F` custom keybinding.
+
+  The `shortcuts` stage now also retires superseded launcher bindings: the old
+  `wofi-drun` entry on `Super+R`, and any hand-made `ulauncher-toggle` binding
+  sitting at a generic slug like `custom0`. Two custom bindings on `<Super>f`
+  make GNOME pick one at random, so leaving the hand-made one in place was worse
+  than replacing it. `dotfiles/wofi-drun` and `dotfiles/wofi-config/` are gone.
+
+- **The desktop theme is now a question, not a hardcoded value.**
+  `--theme=dark-magenta|dark-pink|light`, asked alongside editor and browser and
+  recorded in `env.sh` so the verifier checks the theme you actually chose.
+  `dark-magenta` is the previous behaviour and stays the default; `light` exists
+  because not everyone wants a dark desktop.
+
+- **Input sources lead with English (US) instead of Norwegian.** The first entry
+  in the list is the layout you get at the login screen, and every code sample,
+  installer prompt and piece of documentation assumes a US layout. Norwegian and
+  Japanese are still in the switcher, just not first.
+
+- **The editor stage installs the full prerequisite set from nvimconf's README**,
+  not the subset it had been carrying: `fzf`, `python3-full`, `imagemagick`,
+  `ghostscript`, `wl-clipboard`, `xclip` and `xdg-utils` join the existing
+  node/npm/ripgrep/fd/gdu/lazygit set, each with a note on what breaks without
+  it. It also links `fdfind` to `~/.local/bin/fd` — Ubuntu renames the binary to
+  avoid a clash, and every fd-aware nvim plugin looks for `fd` and silently
+  falls back when it is missing — and warns up front if an interpreter mason
+  needs is absent, rather than letting that surface much later as "the language
+  server does not attach".
+
+### Fixed
+- **The magenta accent colour was never actually applied.**
+  `org.gnome.desktop.interface accent-color` is an enum, and on Ubuntu 26.04 its
+  members are blue, teal, green, yellow, orange, red, pink, purple, slate and
+  brown. There is no `magenta`. gsettings rejected the write, the installer
+  logged a warning nobody read, and the desktop kept whatever accent it already
+  had. Ubuntu's magenta is exposed upstream as `pink`, so that is what gets
+  written now; the `Yaru-magenta*` GTK and icon variants still carry the magenta
+  tint for GTK3 apps.
+- **The icon theme and the GTK theme disagreed on light vs dark.** `icon-theme`
+  was pinned to `Yaru-magenta` while `gtk-theme` was `Yaru-magenta-dark`. Both
+  now come from the same theme table entry, so they cannot drift apart again.
+
 ### Added
 - **Brave as a browser choice.** `--browser=brave`, alongside chrome, vivaldi
   and firefox, installed from Brave's own apt repo with the vendor keyring in

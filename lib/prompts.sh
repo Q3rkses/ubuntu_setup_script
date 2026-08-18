@@ -7,7 +7,8 @@
 #   ./install.sh --name "Cyprian Osinski" --profile=vortex --editor=nvim \
 #                --browser=chrome --yes
 #
-# Exports: VXO_NAME VXO_EMAIL VXO_PROFILE VXO_ROS VXO_EDITOR VXO_BROWSER VXO_LOGO_SRC
+# Exports: VXO_NAME VXO_EMAIL VXO_PROFILE VXO_ROS VXO_EDITOR VXO_BROWSER VXO_THEME
+#          VXO_LOGO_SRC
 
 [[ -n "${_VXO_PROMPTS_SOURCED:-}" ]] && return 0
 _VXO_PROMPTS_SOURCED=1
@@ -21,6 +22,7 @@ VXO_PROFILE="${VXO_PROFILE:-}"
 VXO_ROS="${VXO_ROS:-}"
 VXO_EDITOR="${VXO_EDITOR:-}"
 VXO_BROWSER="${VXO_BROWSER:-}"
+VXO_THEME="${VXO_THEME:-}"
 VXO_LOGO_SRC="${VXO_LOGO_SRC:-}"
 
 usage() {
@@ -55,6 +57,12 @@ OPTIONS
                                VortexNTNU repositories will fail to clone.
     --editor=nvim|vscode       Editor to install
     --browser=chrome|brave|vivaldi|firefox
+    --theme=dark-magenta|dark-pink|light
+                               Desktop theme. dark-magenta is Ubuntu's magenta
+                               Yaru on a dark base; dark-pink is the neutral
+                               dark Yaru with GNOME's pink accent; light is the
+                               magenta Yaru on a light base. Default:
+                               dark-magenta.
     --logo=PATH|URL            Personal-profile fastfetch splash image
     --wallpaper=slideshow|static|none
                                Desktop wallpaper (personal profile).
@@ -97,6 +105,8 @@ parse_args() {
             --editor=*)    VXO_EDITOR="${1#*=}"; shift ;;
             --browser)     VXO_BROWSER="${2:?--browser needs a value}"; shift 2 ;;
             --browser=*)   VXO_BROWSER="${1#*=}"; shift ;;
+            --theme)       VXO_THEME="${2:?--theme needs a value}"; shift 2 ;;
+            --theme=*)     VXO_THEME="${1#*=}"; shift ;;
             --logo)        VXO_LOGO_SRC="${2:?--logo needs a value}"; shift 2 ;;
             --logo=*)      VXO_LOGO_SRC="${1#*=}"; shift ;;
             --wallpaper)   VXO_WALLPAPER_MODE="${2:?--wallpaper needs a value}"; shift 2 ;;
@@ -243,6 +253,8 @@ collect_answers() {
 
     ask_choice VXO_EDITOR  "Which editor?" "nvim" "nvim" "vscode"
     ask_choice VXO_BROWSER "Which browser?" "chrome" "chrome" "brave" "vivaldi" "firefox"
+    ask_choice VXO_THEME   "Which desktop theme?" "dark-magenta" \
+        "dark-magenta" "dark-pink" "light"
 
     # Personal profile: optional custom fastfetch splash image.
     if [[ "$VXO_PROFILE" == "personal" && -z "$VXO_LOGO_SRC" && "$VXO_NONINTERACTIVE" != "1" ]]; then
@@ -275,15 +287,27 @@ ${C_BOLD}Plan${C_RESET}
   Profile   ${C_CYAN}${VXO_PROFILE}${C_RESET}
   Editor    ${C_CYAN}${VXO_EDITOR}${C_RESET}
   Browser   ${C_CYAN}${VXO_BROWSER}${C_RESET}
+  Theme     ${C_CYAN}$(_vxo_describe_theme)${C_RESET}
   C++ libs  ${C_CYAN}Eigen (apt), CasADi ${VXO_CASADI_VERSION:-source} built with IPOPT/SUNDIALS/OSQP${C_RESET}
   ROS 2     ${C_CYAN}$([[ "$VXO_ROS" == "1" ]] && echo "Lyrical + YASMIN (last stage)" || echo "no")${C_RESET}
   Splash    ${C_CYAN}$(_vxo_describe_splash)${C_RESET}
   Boot logo ${C_CYAN}$([[ "${VXO_BOOT_SPLASH:-1}" == "1" ]] && echo "replaces the manufacturer/Ubuntu logo with the splash image" || echo "unchanged (--no-boot-splash)")${C_RESET}
   Wallpaper ${C_CYAN}$([[ "$VXO_PROFILE" == "personal" ]] && echo "GT3 RS ${VXO_WALLPAPER_MODE}" || echo "unchanged (vortex profile)")${C_RESET}
   Corners   ${C_CYAN}$([[ "${VXO_ROUNDED_RADIUS:-6}" == "0" ]] && echo "square (--rounded-radius=0)" || echo "${VXO_ROUNDED_RADIUS:-6}px rounded, all windows")${C_RESET}
-  Desktop   ${C_CYAN}dark + magenta accent, en/no/jp input, dock right, 4 workspaces${C_RESET}
+  Desktop   ${C_CYAN}en/no/jp input, dock right, 4 workspaces, Super+F launcher${C_RESET}
 
 EOF
+}
+
+# Spelled out rather than echoing the raw value: "dark-magenta" does not tell a
+# first-time user which of the two dark options they just picked.
+_vxo_describe_theme() {
+    case "${VXO_THEME:-dark-magenta}" in
+        dark-magenta) printf 'dark, Ubuntu magenta (Yaru-magenta-dark)' ;;
+        dark-pink)    printf 'dark, GNOME pink accent (Yaru-dark)' ;;
+        light)        printf 'light, Ubuntu magenta (Yaru-magenta)' ;;
+        *)            printf '%s' "${VXO_THEME:-dark-magenta}" ;;
+    esac
 }
 
 # Split out of the heredoc above: `A && B || C` inside a command substitution is

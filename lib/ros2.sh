@@ -149,6 +149,16 @@ _vxo_ros_packages() {
     _vxo_ros_python_dev
     _vxo_ros_extra_packages
 
+    # Post-condition, and only meaningful after a real install. A dry run
+    # installs nothing, so $VXO_ROS_SETUP is legitimately absent and asserting
+    # it here ends every `--dry-run` on a red failure for work that was
+    # deliberately not done. Same guard, same reason, as lib/toolchain.sh's
+    # _vxo_apt_available and lib/rust.sh's rustup post-condition.
+    if [[ "${VXO_DRY_RUN:-0}" == "1" ]]; then
+        log_info "[dry-run] would install ros-${VXO_ROS_DISTRO}-desktop and verify $VXO_ROS_SETUP"
+        return 0
+    fi
+
     [[ -f "$VXO_ROS_SETUP" ]] \
         || die "ROS 2 packages installed but $VXO_ROS_SETUP is missing. The apt source may point at the wrong distro."
     log_ok "ROS 2 ${VXO_ROS_DISTRO} installed"
