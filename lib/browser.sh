@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# lib/browser.sh: Chrome, Vivaldi or Firefox from the vendor's own apt repo.
+# lib/browser.sh: Chrome, Brave, Vivaldi or Firefox from the vendor's own apt repo.
 #
 # No snaps, anywhere. On modern Ubuntu `apt install firefox` pulls a
 # transitional package that installs the snap instead, so the Mozilla repo is
-# paired with an apt pin that outranks it. Chrome and Vivaldi have no snap in
-# the archive, but they get the same treatment for consistency.
+# paired with an apt pin that outranks it. Chrome, Brave and Vivaldi have no snap
+# in the archive, but they get the same treatment for consistency.
 #
 # SCOPE: Ubuntu 26.04 only, stock GNOME.
 
@@ -77,6 +77,25 @@ _vxo_browser_chrome() {
     log_ok "Google Chrome installed from Google's apt repo"
 }
 
+# ─────────────────────────── brave ───────────────────────────
+
+_vxo_browser_brave() {
+    if have brave-browser; then
+        log_skip "Brave already installed"
+        return 0
+    fi
+
+    apt_update_once
+    local keyring; keyring="$(_vxo_add_keyring brave-browser https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg)"
+
+    _vxo_write_root_file /etc/apt/sources.list.d/brave-browser-release.list \
+        "deb [arch=$(dpkg --print-architecture) signed-by=${keyring}] https://brave-browser-apt-release.s3.brave.com/ stable main"
+
+    run sudo apt-get update -qq
+    apt_install brave-browser
+    log_ok "Brave installed from Brave's apt repo"
+}
+
 # ─────────────────────────── vivaldi ───────────────────────────
 
 _vxo_browser_vivaldi() {
@@ -133,8 +152,9 @@ _vxo_browser_firefox() {
 vxo_browser() {
     case "${VXO_BROWSER:-chrome}" in
         chrome)  _vxo_browser_chrome ;;
+        brave)   _vxo_browser_brave ;;
         vivaldi) _vxo_browser_vivaldi ;;
         firefox) _vxo_browser_firefox ;;
-        *)       die "unknown browser: '${VXO_BROWSER:-}' (expected chrome, vivaldi or firefox)" ;;
+        *)       die "unknown browser: '${VXO_BROWSER:-}' (expected chrome, brave, vivaldi or firefox)" ;;
     esac
 }

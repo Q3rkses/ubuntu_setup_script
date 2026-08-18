@@ -136,10 +136,46 @@ check_cmd "fzf installed"       fzf
 check_cmd "ripgrep installed"   rg
 check_cmd "git installed"       git
 
-if command -v starship >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/starship" ]]; then
-    pass "starship installed" "$( (starship --version 2>/dev/null || "$HOME/.local/bin/starship" --version 2>/dev/null) | head -1)"
+_starship_bin=""
+if [[ -x "$HOME/.local/bin/starship" ]]; then
+    _starship_bin="$HOME/.local/bin/starship"
+elif command -v starship >/dev/null 2>&1; then
+    _starship_bin="$(command -v starship)"
+fi
+
+if [[ -n "$_starship_bin" ]]; then
+    pass "starship installed" "$("$_starship_bin" --version 2>/dev/null | head -1)"
 else
     fail "starship installed" "not on PATH and not at ~/.local/bin/starship"
+fi
+
+# The binary existing is not the same as the prompt working. A typo in
+# starship.toml does not stop starship from running, it just silently drops the
+# broken module, so render an actual prompt and look at what comes back.
+if [[ -n "$_starship_bin" ]]; then
+    if [[ -f "$HOME/.config/starship.toml" ]]; then
+        _starship_err="$(STARSHIP_CONFIG="$HOME/.config/starship.toml" \
+            "$_starship_bin" prompt --status=0 2>&1 >/dev/null)"
+        _starship_out="$(STARSHIP_CONFIG="$HOME/.config/starship.toml" \
+            "$_starship_bin" prompt --status=0 2>/dev/null)"
+        if [[ -n "$_starship_err" ]]; then
+            fail "starship config valid" "starship complained: ${_starship_err//$'\n'/ }"
+        elif [[ -z "$_starship_out" ]]; then
+            fail "starship config valid" "the prompt rendered empty"
+        else
+            pass "starship config valid" "the config at ~/.config/starship.toml renders a prompt"
+        fi
+    else
+        fail "starship config valid" "no ~/.config/starship.toml, so you get the default prompt"
+    fi
+fi
+
+# The rc invokes starship by its full path, so match the command loosely rather
+# than looking for a literal 'starship init bash'.
+if grep -qE 'starship[^ ]* init bash' "$HOME/.bashrc" 2>/dev/null; then
+    pass "starship wired into bash" "your ~/.bashrc runs 'starship init bash'"
+else
+    fail "starship wired into bash" "your ~/.bashrc never initialises starship, so the prompt stays plain"
 fi
 
 # Process substitution rather than a pipe: `grep -q` exits on the first match,
@@ -158,6 +194,32 @@ if grep -qi "JetBrainsMono Nerd Font" < <(fc-list 2>/dev/null); then
     pass "JetBrainsMono Nerd Font" "glyphs will render in kitty and starship"
 else
     fail "JetBrainsMono Nerd Font" "not in fc-list, so icons will show as boxes"
+fi
+
+# A font can be named "Nerd Font" and still be a plain build with none of the
+# patched glyphs. These three codepoints are the ones the shipped configs lean
+# on hardest: the starship user icon (plane 15), the git branch icon and a
+# powerline separator. If fontconfig can serve all three, the patching is real.
+_glyphs_missing=()
+for _cp in f0548 f418 e0b0; do
+    [[ -n "$(fc-list ":charset=$_cp:family=JetBrainsMono Nerd Font" 2>/dev/null)" ]] \
+        || _glyphs_missing+=("U+${_cp^^}")
+done
+if ((${#_glyphs_missing[@]} == 0)); then
+    pass "Nerd Font glyph coverage" "prompt and terminal icons resolve to real glyphs"
+else
+    fail "Nerd Font glyph coverage" "missing ${_glyphs_missing[*]}, so those icons show as boxes"
+fi
+
+# kitty is configured for the Nerd Font, but the starship prompt also shows up
+# in every GTK terminal, and GNOME picks that font from this key.
+if command -v gsettings >/dev/null 2>&1; then
+    _mono="$(gsettings get org.gnome.desktop.interface monospace-font-name 2>/dev/null | tr -d "'")"
+    if [[ "$_mono" == *"Nerd Font"* ]]; then
+        pass "GNOME monospace font" "$_mono"
+    else
+        fail "GNOME monospace font" "'$_mono' has no Nerd Font glyphs; icons box up outside kitty"
+    fi
 fi
 
 section "Shell configuration"
@@ -450,10 +512,12 @@ section "Browser"
 
 case "$VXO_BROWSER" in
     chrome)  check_cmd "Google Chrome installed" google-chrome-stable ;;
+    brave)   check_cmd "Brave installed"         brave-browser ;;
     vivaldi) check_cmd "Vivaldi installed"       vivaldi ;;
     firefox) check_cmd "Firefox installed"       firefox ;;
     "")
         if command -v google-chrome-stable >/dev/null 2>&1 \
+            || command -v brave-browser >/dev/null 2>&1 \
             || command -v vivaldi >/dev/null 2>&1 \
             || command -v firefox >/dev/null 2>&1; then
             pass "A browser is installed" "browser choice not recorded"

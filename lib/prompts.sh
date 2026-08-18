@@ -54,7 +54,7 @@ OPTIONS
                                HTTPS. For automated testing only: private
                                VortexNTNU repositories will fail to clone.
     --editor=nvim|vscode       Editor to install
-    --browser=chrome|vivaldi|firefox
+    --browser=chrome|brave|vivaldi|firefox
     --logo=PATH|URL            Personal-profile fastfetch splash image
     --wallpaper=slideshow|static|none
                                Desktop wallpaper (personal profile).
@@ -242,7 +242,7 @@ collect_answers() {
     export VXO_ROS
 
     ask_choice VXO_EDITOR  "Which editor?" "nvim" "nvim" "vscode"
-    ask_choice VXO_BROWSER "Which browser?" "chrome" "chrome" "vivaldi" "firefox"
+    ask_choice VXO_BROWSER "Which browser?" "chrome" "chrome" "brave" "vivaldi" "firefox"
 
     # Personal profile: optional custom fastfetch splash image.
     if [[ "$VXO_PROFILE" == "personal" && -z "$VXO_LOGO_SRC" && "$VXO_NONINTERACTIVE" != "1" ]]; then

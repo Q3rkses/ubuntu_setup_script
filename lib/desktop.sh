@@ -154,6 +154,18 @@ _vxo_desktop_appearance() {
     gset_soft "$iface" show-battery-percentage "true"
     gset_soft "$iface" font-hinting "'slight'"
 
+    # kitty asks for the Nerd Font directly, but the starship prompt also turns
+    # up in GNOME Terminal, Text Editor and anything else that reads this key,
+    # and the stock Ubuntu Mono has none of the patched glyphs. Only set it if
+    # the font really is on disk, otherwise every monospace app falls back to a
+    # font fontconfig picked at random.
+    local mono="${VXO_NERD_FONT_NAME:-JetBrainsMono Nerd Font}"
+    if grep -qF "$mono" < <(fc-list 2>/dev/null); then
+        gset_soft "$iface" monospace-font-name "'$mono 12'"
+    else
+        log_skip "'$mono' is not installed, leaving the GNOME monospace font alone"
+    fi
+
     # GNOME 47+ / Ubuntu's current approach: a named accent colour applied to
     # whatever the base theme is.
     gset_soft "$iface" accent-color "'$VXO_DESKTOP_ACCENT'"
@@ -248,6 +260,7 @@ _vxo_desktop_favourites() {
 
     case "${VXO_BROWSER:-}" in
         chrome)  favs+=("google-chrome.desktop") ;;
+        brave)   favs+=("brave-browser.desktop") ;;
         vivaldi) favs+=("vivaldi-stable.desktop") ;;
         firefox) favs+=("firefox.desktop") ;;
     esac
