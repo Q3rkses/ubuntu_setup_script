@@ -487,6 +487,14 @@ case "$VXO_EDITOR" in
                 fail "git uses nvim" "core.editor='${git_ed:-unset}' sequence.editor='${git_seq:-unset}'"
             fi
 
+            # Tools the config shells out to. lazygit is the one that matters:
+            # nvimconf enables the snacks lazygit picker, which errors without it.
+            if command -v lazygit >/dev/null 2>&1; then
+                pass "lazygit installed" "$(lazygit --version 2>/dev/null | head -1)"
+            else
+                fail "lazygit installed" "<Leader>gg and the snacks lazygit picker will not work"
+            fi
+
             if command -v xdg-mime >/dev/null 2>&1; then
                 mime_default="$(xdg-mime query default text/plain 2>/dev/null || true)"
                 if [[ "$mime_default" == nvim.desktop ]]; then

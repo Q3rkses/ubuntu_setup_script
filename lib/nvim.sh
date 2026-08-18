@@ -117,12 +117,88 @@ _vxo_install_neovim_binary() {
     log_ok "installed neovim: $(nvim --version 2>/dev/null | head -1)"
 }
 
+# Everything the config actually shells out to. mason builds the language
+# servers itself, which needs node, npm, unzip and a C compiler for the
+# treesitter parsers; the rest are tools the config's own keymaps invoke.
+#
+# ripgrep/fd-find usually arrive with the base stage; apt_install is idempotent
+# so listing them again costs nothing and keeps this module runnable on its own
+# via --only=editor.
 _vxo_install_nvim_deps() {
     apt_update_once
-    # ripgrep/fd-find usually arrive with the base stage; apt_install is
-    # idempotent so listing them again costs nothing and keeps this module
-    # runnable on its own via --only=editor.
-    apt_install ripgrep fd-find python3-venv nodejs npm unzip
+    apt_install ripgrep fd-find python3-venv nodejs npm unzip gdu
+    _vxo_install_lazygit
+}
+
+# lazygit is not optional the way the rest are. AstroNvim gates <Leader>gg and
+# <Leader>tl on `executable("lazygit")`, so a missing binary just means the
+# keymaps quietly never exist, but nvimconf also sets snacks `lazygit.enabled`,
+# and that picker errors when invoked without it.
+#
+# It is not in every Ubuntu archive, so try apt and fall back to the upstream
+# release tarball, the same way lib/kitty_fastfetch.sh handles fastfetch.
+_vxo_install_lazygit() {
+    if have lazygit; then
+        log_skip "lazygit already installed ($(lazygit --version 2>/dev/null | head -1))"
+        return 0
+    fi
+
+    if apt-cache show lazygit >/dev/null 2>&1; then
+        apt_install lazygit
+        return 0
+    fi
+
+    log_info "lazygit is not in the archive for Ubuntu $(ubuntu_release), using the upstream release instead"
+
+    # Same reasoning as the neovim tarball above: the release lookup is a bare
+    # curl against the GitHub API, so a dry run would really call it.
+    if [[ "${VXO_DRY_RUN:-0}" == "1" ]]; then
+        log_info "[dry-run] would install the upstream lazygit release into /usr/local/bin"
+        return 0
+    fi
+
+    local arch; arch="$(dpkg --print-architecture)"
+    local asset_arch
+    case "$arch" in
+        amd64) asset_arch="x86_64" ;;
+        arm64) asset_arch="arm64" ;;
+        *)     log_warn "no prebuilt lazygit for architecture '$arch', skipping lazygit"; return 0 ;;
+    esac
+
+    local ver
+    ver="$(curl -fsSL https://api.github.com/repos/jesseduffield/lazygit/releases/latest 2>/dev/null \
+        | grep -F '"tag_name"' | head -1 | awk -F'"' '{print $4}')" || true
+    ver="${ver#v}"
+    if [[ -z "$ver" ]]; then
+        log_warn "could not determine the latest lazygit release (GitHub API rate limit?), skipping lazygit"
+        return 0
+    fi
+
+    local tmp; tmp="$(mktemp -d)"
+    local url="https://github.com/jesseduffield/lazygit/releases/download/v${ver}/lazygit_${ver}_Linux_${asset_arch}.tar.gz"
+
+    log_info "downloading lazygit ${ver}"
+    if ! run curl -fsSL -o "$tmp/lazygit.tar.gz" "$url"; then
+        log_warn "download failed: $url. Skipping lazygit."
+        rm -rf "$tmp"
+        return 0
+    fi
+
+    if ! run tar -xzf "$tmp/lazygit.tar.gz" -C "$tmp" lazygit; then
+        log_warn "could not unpack the lazygit tarball, skipping lazygit"
+        rm -rf "$tmp"
+        return 0
+    fi
+
+    run sudo install -m 0755 "$tmp/lazygit" /usr/local/bin/lazygit
+    rm -rf "$tmp"
+
+    hash -r 2>/dev/null || true
+    if have lazygit; then
+        log_ok "installed lazygit: $(lazygit --version 2>/dev/null | head -1)"
+    else
+        log_warn "lazygit still not on PATH after installing it"
+    fi
 }
 
 _vxo_clone_nvim_config() {

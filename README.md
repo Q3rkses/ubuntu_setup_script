@@ -143,7 +143,7 @@ safe, and checkpointed, so a failure never costs you the stages before it.
 | 7 | `bashrc` | Managed `.bashrc`, aliases, ble.sh autosuggestions, NVM, `~/code/ros2_ws` |
 | 8 | `kitty-fastfetch` | Kitty with Catppuccin Mocha, fastfetch splash with a real image logo |
 | 9 | `boot-splash` | Plymouth theme showing your logo instead of the vendor badge |
-| 10 | `editor` | Neovim from the official tarball, or VS Code from Microsoft's repo |
+| 10 | `editor` | Neovim from the official tarball plus lazygit and the tools its config shells out to, or VS Code from Microsoft's repo |
 | 11 | `browser` | Chrome, Brave, Vivaldi or Firefox from the vendor's apt repo |
 | 12 | `shortcuts` | GNOME keybindings, static 4 workspaces |
 | 13 | `desktop` | Dark mode, magenta accent, input sources, touchpad, dock, monospace font |
@@ -174,6 +174,10 @@ follows `kitty-fastfetch`.
   `$SUDO_EDITOR`, `update-alternatives`, `git core.editor` and `sequence.editor`,
   and Nautilus double-click associations. Setting only one of those is why nano
   keeps coming back.
+- **The nvim config's external tools come with it.** mason builds the language
+  servers itself, but the config also shells out to lazygit, ripgrep, fd and
+  gdu. lazygit in particular is not decorative: nvimconf enables the snacks
+  lazygit picker, which errors without the binary.
 - **Your GNOME settings are backed up first.** `shortcuts` and `desktop` both
   dump `/org/gnome/` to `~/.local/state/vortex-onboarding/backups/` before
   writing anything.

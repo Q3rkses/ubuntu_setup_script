@@ -18,6 +18,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   that key. The `desktop` stage now sets it, and only when the font is actually
   on disk, since pointing the key at a missing family hands every monospace app
   a font fontconfig picked at random.
+- **The editor stage installs the tools the nvim config actually calls.**
+  lazygit, plus gdu, alongside the existing node/npm/ripgrep/fd set. mason
+  builds the language servers itself, so that side was already covered, but
+  nvimconf enables the snacks lazygit picker and AstroNvim binds `<Leader>gg`
+  and `<Leader>tl` to it, and none of that worked without the binary. lazygit is
+  not in every Ubuntu archive, so it tries apt first and falls back to the
+  upstream release tarball, the same shape as the fastfetch fallback.
 - **`boot-splash` stage.** The boot logo is now your terminal splash image
   instead of the manufacturer badge. Ubuntu defaults to the `bgrt` Plymouth
   theme, whose entire purpose is to keep displaying the vendor logo the firmware
