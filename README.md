@@ -14,6 +14,9 @@ Ubuntu 26.04 · stock GNOME · ROS 2 Lyrical Luth
 
 ## Before you start
 
+**On campus?** Set up eduroam first: [NTNU's Linux profile installer](https://eduroam.no/connect/download/?idp=74;profile=78;os=linux)
+configures it for you in a couple of clicks.
+
 | # | You need | How to check |
 |---|---|---|
 | 1 | **Ubuntu 26.04**, freshly installed | `lsb_release -r` prints `26.04` |

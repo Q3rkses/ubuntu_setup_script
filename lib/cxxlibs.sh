@@ -349,8 +349,22 @@ EOF
         return 1
     fi
 
-    out="$("$tmp/check" 2>&1)" || rc=$?
+    # libmumps-seq-dev, despite the name, links libscalapack-openmpi, so
+    # constructing the ipopt solver above pulls in a full Open MPI runtime.
+    # Open MPI's hwloc dependency has a GPU-topology backend ("gl") that probes
+    # the X server's NV-CONTROL extension whenever DISPLAY is set, and on a
+    # GNOME/Xwayland session that connect() can block forever instead of
+    # erroring out — hanging this check (and any real program that constructs
+    # an ipopt solver) with no output and no timeout. HWLOC_COMPONENTS=-gl
+    # disables that backend; nothing here uses GPU topology.
+    out="$(HWLOC_COMPONENTS=-gl timeout 60 "$tmp/check" 2>&1)" || rc=$?
     rm -rf "$tmp"
+
+    if ((rc == 124)); then
+        log_error "CasADi's ipopt solver hung for 60s instead of returning (rc=124)."
+        log_error "This usually means HWLOC_COMPONENTS=-gl above did not take effect."
+        return 1
+    fi
 
     if ((rc != 0)); then
         log_error "CasADi is installed but the plugin check failed:"

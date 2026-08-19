@@ -31,3 +31,19 @@ fi
 
 complete -o default -o bashdefault -F _python_argcomplete cb
 complete -o default -o bashdefault -F _python_argcomplete ct
+
+# Fuzzy Ctrl+R via fzf. Sources fzf's own history widget for a plain-bash
+# fallback, then rebinds it directly in ble.sh's keymap when ble.sh is
+# present, since ble.sh's own C-r (plain incremental search) otherwise wins.
+if [ -f /usr/share/doc/fzf/examples/key-bindings.bash ]; then
+    # FZF_CTRL_R_OPTS only reaches this one widget, not FZF_DEFAULT_OPTS/
+    # Ctrl-T/Alt-C or any other fzf invocation. ~7 visible matches instead
+    # of a 40%-of-terminal popup.
+    export FZF_CTRL_R_OPTS='--height=8'
+    . /usr/share/doc/fzf/examples/key-bindings.bash
+
+    if [ -n "${BLE_VERSION-}" ] && command -v ble-bind >/dev/null 2>&1; then
+        ble-bind -m emacs -x C-r __fzf_history__
+        ble-bind -m vi_imap -x C-r __fzf_history__
+    fi
+fi

@@ -185,6 +185,10 @@ _vxo_install_fastfetch_config() {
 
     install_file "$rendered" "$VXO_FASTFETCH_DIR/config.jsonc"
     rm -f "$rendered"
+
+    # The CPU module shells out to this for a short "Vendor Model (Nth Gen)"
+    # label instead of the raw lscpu string.
+    install_file "$VXO_DOTFILES/fastfetch/cpu-label.sh" "$VXO_FASTFETCH_DIR/cpu-label.sh" 0755
 }
 
 # ─────────────────────────── entrypoint ───────────────────────────

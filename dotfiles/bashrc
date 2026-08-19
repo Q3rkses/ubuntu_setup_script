@@ -1,12 +1,7 @@
 # ~/.bashrc: executed by bash(1) for non-login shells.
 #
-# Managed by vortex-onboarding (https://github.com/vortexntnu/onboarding).
-# Reinstalled by `./install.sh --only=bashrc`; the previous copy is kept as
-# ~/.bashrc.bak.<timestamp>. Local tweaks are better placed in
-# ~/.bash_aliases or ~/.bash_aliases.personal, which survive reinstalls.
-#
-# Everything that touches an optional tool is guarded, so this file is safe on a
-# machine without ROS, cargo, conda or nvm installed.
+# Managed by vortex-onboarding. Local tweaks go in ~/.bash_aliases or
+# ~/.bash_aliases.personal, which survive a reinstall of this file.
 
 # If not running interactively, don't do anything
 case $- in
@@ -14,24 +9,19 @@ case $- in
 *) return ;;
 esac
 
-# Profile/editor/workspace choices recorded by the installer.
 if [ -f "$HOME/.config/vortex-onboarding/env.sh" ]; then
     . "$HOME/.config/vortex-onboarding/env.sh"
 fi
 
-# ── ble.sh (part 1 of 2) ─────────────────────────────────────────────────
-# Inline autosuggestions from history plus live syntax highlighting, the bash
-# equivalent of PowerShell's PSReadLine predictive IntelliSense.
-#
-# This MUST be sourced near the top with --noattach, and attached at the very
-# bottom of the file (part 2). ble.sh replaces bash's line editor, so attaching
-# it before the rest of the rc has run would fight with starship's prompt hooks
-# and with the fzf key bindings. Splitting it is the documented, supported way.
-# The installer builds ble.sh into ~/.local. A system-wide copy under
-# /usr/local is checked as a fallback, because a machine that installed it by
-# hand before running this installer already has one there, and sourcing
-# neither would silently cost the autosuggestions this file is configured for.
-# First match wins: sourcing two copies would attach the line editor twice.
+# Personal overrides that survive a reinstall of this file (env.sh does not).
+# ~/.bash_aliases.personal already documents this as the place to point
+# VXO_UNI_DIR/VXO_ROS_WS at a non-default layout.
+if [ -f "$HOME/.bashrc.local" ]; then
+    . "$HOME/.bashrc.local"
+fi
+
+# ble.sh: load now with --noattach, attach at the bottom of this file (part 2)
+# so it doesn't fight starship's prompt hooks or the fzf/ble key bindings.
 if [ -f "$HOME/.local/share/blesh/ble.sh" ]; then
     . "$HOME/.local/share/blesh/ble.sh" --noattach
 elif [ -f /usr/local/share/blesh/ble.sh ]; then
@@ -128,15 +118,8 @@ if [ -f ~/.bash_aliases ]; then
     . ~/.bash_aliases
 fi
 
-# Personal-profile aliases (university venvs etc). Only present on a personal
-# install; the vortex profile never gets this file.
 if [ -f ~/.bash_aliases.personal ]; then
     . ~/.bash_aliases.personal
-fi
-
-# Argument completion for colcon
-if [ -f /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash ]; then
-    . /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash
 fi
 
 # enable programmable completion features (you don't need to enable
@@ -150,7 +133,7 @@ if ! shopt -oq posix; then
     fi
 fi
 
-# Source Filip Nilsen who copied from Jon Aslak who copied from Kleven (2024)
+# Source: Filip Nilsen, via Jon Aslak, via Kleven (2024)
 rcd() {
     temp_file="$(mktemp -t ranger_cd.XXXXXXXXXX)"
     env ranger --choosedir="$temp_file" "$@"
@@ -162,35 +145,46 @@ rcd() {
     rm -f -- "$temp_file"
 }
 
-# Starship (robust init)
 if [ -x "$HOME/.local/bin/starship" ]; then
     export PATH="$HOME/.local/bin:$PATH"
     eval "$("$HOME/.local/bin/starship" init bash)"
 fi
 
-# ── ROS 2 ────────────────────────────────────────────────────────────────
-# ROS 2 Lyrical Luth (Ubuntu 26.04). Both lines are guarded so a machine
-# without ROS, or one where the workspace has never been built, still starts a
-# shell without errors.
-if [ -f /opt/ros/lyrical/setup.bash ]; then
-    . /opt/ros/lyrical/setup.bash
+# ipopt pulls in Open MPI's hwloc, which can hang probing X11 for GPU
+# topology; nothing here needs that, so disable the probe.
+export HWLOC_COMPONENTS=-gl
+
+# lazy-source ROS 2 (measured: core setup.bash ~240ms, workspace overlay
+# ~320ms, colcon argcomplete hook ~90ms — ~650ms total on every single shell,
+# even ones that never touch ros2/colcon). First real invocation in a shell
+# pays it once; a shell that never touches ROS pays nothing.
+_vxo_ros_source() {
+    unset -f ros2 colcon _vxo_ros_source
+
+    if [ -f /opt/ros/lyrical/setup.bash ]; then
+        . /opt/ros/lyrical/setup.bash
+    fi
+
+    if [ -f "${VXO_ROS_WS:-$HOME/code/ros2_ws}/install/setup.bash" ]; then
+        . "${VXO_ROS_WS:-$HOME/code/ros2_ws}/install/setup.bash"
+    fi
+
+    if [ -f /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash ]; then
+        . /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash
+    fi
+
+    if command -v register-python-argcomplete3 >/dev/null 2>&1; then
+        eval "$(register-python-argcomplete3 ros2)"
+        eval "$(register-python-argcomplete3 colcon)"
+    fi
+}
+
+if [ -f /opt/ros/lyrical/setup.bash ] || [ -f "${VXO_ROS_WS:-$HOME/code/ros2_ws}/install/setup.bash" ]; then
+    ros2()   { _vxo_ros_source; ros2 "$@"; }
+    colcon() { _vxo_ros_source; colcon "$@"; }
 fi
 
-if [ -f "${VXO_ROS_WS:-$HOME/code/ros2_ws}/install/setup.bash" ]; then
-    . "${VXO_ROS_WS:-$HOME/code/ros2_ws}/install/setup.bash"
-fi
-
-# Per-command argcomplete (more robust than the global hooks)
-if command -v register-python-argcomplete3 >/dev/null 2>&1; then
-    eval "$(register-python-argcomplete3 ros2)"
-    eval "$(register-python-argcomplete3 colcon)"
-fi
-
-# ── lazy loaders ─────────────────────────────────────────────────────────
-# These stay lazy on purpose: eagerly sourcing conda and nvm costs ~200ms on
-# every single shell. Each stub replaces itself on first use.
-
-# lazy activate conda
+# lazy activate conda (costs ~200ms to source eagerly)
 if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
     conda() {
         unset -f conda
@@ -199,7 +193,7 @@ if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
     }
 fi
 
-# lazy activate nvm
+# lazy activate nvm (costs ~200ms to source eagerly)
 export NVM_DIR="$HOME/.nvm"
 if [ -s "$NVM_DIR/nvm.sh" ]; then
     nvm() {
@@ -210,7 +204,6 @@ if [ -s "$NVM_DIR/nvm.sh" ]; then
     }
 fi
 
-# ── rust ─────────────────────────────────────────────────────────────────
 if [ -d "$HOME/.cargo/bin" ]; then
     export PATH="$HOME/.cargo/bin:$PATH"
 fi
@@ -218,22 +211,13 @@ if [ -f "$HOME/.cargo/env" ]; then
     . "$HOME/.cargo/env"
 fi
 
-# ── fzf ──────────────────────────────────────────────────────────────────
-if [ -f /usr/share/doc/fzf/examples/key-bindings.bash ]; then
-    . /usr/share/doc/fzf/examples/key-bindings.bash
-fi
-
-# ── splash ───────────────────────────────────────────────────────────────
-# Show fastfetch once, in the first kitty window only.
+# fastfetch splash, once per session (first kitty window only)
 if command -v fastfetch >/dev/null 2>&1; then
     if [ "$(pgrep -x kitty | wc -l)" -le 1 ]; then
         fastfetch
     fi
 fi
 
-# ── ble.sh (part 2 of 2) ─────────────────────────────────────────────────
-# Attach last, once starship and the fzf bindings are in place. BLE_VERSION is
-# only set when part 1 actually sourced, so this is a no-op without ble.sh.
 if [ -n "${BLE_VERSION-}" ]; then
     ble-attach
 fi

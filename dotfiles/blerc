@@ -9,9 +9,12 @@
 #   history: suggest the most recent matching command
 #   syntax:  complete filenames, variables and options contextually
 # complete_auto_delay is in milliseconds: how long the line must be idle before
-# the grey suggestion appears. 1 means "essentially instantly".
+# the grey suggestion appears. At 1 (the previous value here), ble.sh's pure-bash
+# highlighter+completion pipeline recomputes on essentially every keystroke of a
+# fast typing burst, which reads as input lag independent of actual CPU load.
+# 30 is still well under human perception of "delayed" but debounces that.
 bleopt complete_auto_complete=1
-bleopt complete_auto_delay=1
+bleopt complete_auto_delay=30
 
 # Colour the completion menu and highlight the matched substring in each entry.
 bleopt complete_menu_color=on
@@ -28,8 +31,8 @@ ble-bind -m 'auto_complete' -f 'M-f' 'auto_complete/insert-word'
 # Tab opens a navigable menu instead of dumping a plain column list.
 bleopt complete_menu_style=align-nowrap
 bleopt complete_menu_complete=1
-ble-bind -m 'menu_complete' -f 'right' 'menu_complete/forward'
-ble-bind -m 'menu_complete' -f 'left'  'menu_complete/backward'
+ble-bind -m 'menu_complete' -f 'right' 'menu/forward'
+ble-bind -m 'menu_complete' -f 'left'  'menu/backward'
 
 # ── syntax highlighting: informative only ─────────────────────────────────
 # Highlighting is ON, but deliberately restrained.

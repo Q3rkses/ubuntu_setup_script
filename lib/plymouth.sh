@@ -64,6 +64,7 @@ vxo_boot_splash() {
     fi
 
     _vxo_splash_deps || return 0
+    _vxo_splash_preload_gpu_module
 
     local src; src="$(_vxo_splash_source_image)"
     if [[ -z "$src" ]]; then
@@ -110,6 +111,43 @@ _vxo_splash_deps() {
     fi
 
     return 0
+}
+
+# ─────────────────────────── early KMS ───────────────────────────
+
+# Without this, the real GPU driver is not in the initramfs at all: it only
+# loads later, from the root filesystem, well after Plymouth has already
+# started drawing on the kernel's generic simple-framebuffer. Measured on a
+# TigerLake Iris Xe laptop: simple-framebuffer registers at 0.96s, i915 does
+# not take over until 4.15s. For those ~3s the splash is on a crude fallback
+# surface, then visibly resets once the real driver takes over — which reads
+# as "the logo shows up late" rather than being there from Plymouth's first
+# frame. Detected via lspci rather than hardcoded to i915: this exact chip
+# also exposes the newer `xe` driver, so whichever one the kernel actually
+# bound is the one worth preloading.
+_vxo_splash_preload_gpu_module() {
+    local driver
+    driver="$(lspci -k -d ::0300 2>/dev/null | awk -F': ' '/Kernel driver in use/ {print $2; exit}')"
+    [[ -n "$driver" ]] || return 0
+
+    local modules_file=/etc/initramfs-tools/modules
+    [[ -f "$modules_file" ]] || return 0
+
+    if grep -qxF "$driver" "$modules_file" 2>/dev/null; then
+        log_skip "boot splash: $driver already preloaded in the initramfs"
+        return 0
+    fi
+
+    if [[ "${VXO_DRY_RUN:-0}" == "1" ]]; then
+        log_info "[dry-run] would preload $driver in the initramfs for an earlier display handoff"
+        return 0
+    fi
+
+    run sudo sh -c "printf '%s\n' '$driver' >> '$modules_file'" \
+        || { log_warn "boot splash: could not preload $driver in the initramfs"; return 0; }
+
+    VXO_SPLASH_CHANGED=1
+    log_ok "boot splash: preloading $driver in the initramfs, for an earlier display handoff"
 }
 
 # ─────────────────────────── the image ───────────────────────────

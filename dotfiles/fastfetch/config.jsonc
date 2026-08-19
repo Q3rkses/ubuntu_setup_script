@@ -64,9 +64,9 @@
       "format": "├─ hardware ─────────────────────┤"
     },
     {
-      "type": "cpu",
+      "type": "command",
       "key": " 󰻠 CPU",
-      "format": "{1}"
+      "text": "$HOME/.config/fastfetch/cpu-label.sh"
     },
     {
       "type": "gpu",
@@ -96,10 +96,12 @@
 
     "break",
 
-    // bottom color strip
+    // bottom color strip, centered under the hardware box (34 chars wide,
+    // the strip itself 15: (34-15)/2 = 9)
     {
       "type": "colors",
-      "symbol": "circle"
+      "symbol": "circle",
+      "paddingLeft": 9
     }
   ]
 }

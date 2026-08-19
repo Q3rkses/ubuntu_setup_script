@@ -92,7 +92,9 @@ vxo_desktop() {
     _vxo_desktop_peripherals
     _vxo_desktop_window_policy
     _vxo_desktop_dock
+    _vxo_desktop_icons
     _vxo_desktop_favourites
+    _vxo_desktop_account_picture
 
     log_ok "Desktop settings applied."
     log_warn "Log out and back in: the theme, input sources and fractional scaling"
@@ -279,10 +281,32 @@ _vxo_desktop_dock() {
     gset_soft "$dock" dock-fixed "false"
     gset_soft "$dock" extend-height "false"
 
+    # The trash and removable-drive tiles are Ubuntu defaults nobody asked for;
+    # favourites below already covers what belongs on the dock.
+    gset_soft "$dock" show-trash "false"
+    gset_soft "$dock" show-mounts "false"
+
     # hot-keys binds Super+<n> to "launch the Nth dock item", which is the same
     # collision lib/shortcuts.sh clears in GNOME Shell's own keybindings. Both
     # have to be off or Super+1..4 does two things at once.
     gset_soft "$dock" hot-keys "false"
+}
+
+# ─────────────────────────── desktop icons ───────────────────────────
+
+# Desktop Icons NG (ding), Ubuntu's default desktop-icons extension. The Home
+# folder icon on the desktop is redundant with the dock's Nautilus/Files entry
+# and with the sidebar bookmark; nobody asked for a second way to get there.
+# On a non-Ubuntu GNOME the schema is absent and this write skips.
+_vxo_desktop_icons() {
+    local ding=org.gnome.shell.extensions.ding
+
+    if ! gsettings writable "$ding" show-home >/dev/null 2>&1; then
+        log_skip "desktop-icons (ding) schema not present, leaving desktop icons alone"
+        return 0
+    fi
+
+    gset_soft "$ding" show-home "false"
 }
 
 # ─────────────────────────── favourites ───────────────────────────
@@ -335,4 +359,40 @@ _vxo_desktop_favourites() {
     value+="]"
 
     gset_soft org.gnome.shell favorite-apps "$value"
+}
+
+# ─────────────────────────── account picture ───────────────────────────
+
+# Vortex profile only: a personal install already picked its own splash image
+# for a reason, and forcing a team logo onto someone's account picture would
+# fight that choice. Uses AccountsService (what GNOME Settings itself calls),
+# not a hand-edited file, so it stays consistent if the daemon rewrites its
+# state.
+_vxo_desktop_account_picture() {
+    if [[ "${VXO_PROFILE:-}" != "vortex" ]]; then
+        log_skip "account picture: personal profile, leaving it alone"
+        return 0
+    fi
+
+    if ! have gdbus; then
+        log_skip "gdbus not found, leaving the account picture alone"
+        return 0
+    fi
+
+    if [[ "${VXO_DRY_RUN:-0}" == "1" ]]; then
+        log_info "[dry-run] would set the account picture to the Vortex logo"
+        return 0
+    fi
+
+    local logo; logo="$(_vxo_resolve_logo)"
+    [[ -n "$logo" && -f "$logo" ]] || { log_skip "no logo resolved, leaving the account picture alone"; return 0; }
+
+    if run gdbus call --system \
+        --dest org.freedesktop.Accounts \
+        --object-path "/org/freedesktop/Accounts/User$(id -u)" \
+        --method org.freedesktop.Accounts.User.SetIconFile "$logo" >/dev/null; then
+        log_ok "account picture set to $logo"
+    else
+        log_warn "could not set the account picture via AccountsService (no polkit auth?)"
+    fi
 }

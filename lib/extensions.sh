@@ -34,7 +34,6 @@ VXO_EXT_DIR="$HOME/.local/share/gnome-shell/extensions"
 VXO_EXT_API="https://extensions.gnome.org"
 
 VXO_ROUNDED_UUID="rounded-window-corners@fxgn"
-VXO_ROUNDED_SCHEMA="org.gnome.shell.extensions.rounded-window-corners-reborn"
 
 # uuid per line. Extend this list to install more.
 VXO_EXTENSIONS=(
@@ -42,9 +41,9 @@ VXO_EXTENSIONS=(
 )
 
 # Corner radius in pixels. GNOME's own libadwaita windows use 12; the extension
-# ships a default of 15. 6 sits in the 4-8 range that reads as "softened" rather
-# than "bubbly" at 1x scaling. Override with --rounded-radius=N.
-VXO_ROUNDED_RADIUS="${VXO_ROUNDED_RADIUS:-6}"
+# ships a default of 15. 8 sits at the top of the 4-8 range that reads as
+# "softened" rather than "bubbly" at 1x scaling. Override with --rounded-radius=N.
+VXO_ROUNDED_RADIUS="${VXO_ROUNDED_RADIUS:-8}"
 
 # ─────────────────────────── entrypoint ───────────────────────────
 
@@ -227,11 +226,24 @@ _vxo_ext_enable() {
 
 # ─────────────────────── rounded corners settings ───────────────────────
 
-# The radius lives inside global-rounded-corner-settings, a single a{sv} dict
-# holding padding, borderRadius, smoothing, borderColor and the
-# keep-when-maximized flags. GSettings has no way to write one member of a dict,
-# so the whole value is rewritten. Every member below other than borderRadius
-# matches the extension's own schema default, so this changes exactly one thing.
+# This extension's schema lives only inside its own extension directory
+# (compiled there by _vxo_ext_install), never in a location the system schema
+# cache or the standalone `gsettings` command searches. Only gnome-shell's own
+# extension runtime resolves it, via a SettingsSchemaSource pointed straight at
+# that directory — so `gsettings writable ...`/`gset_soft` against this schema
+# always report "no such schema" and silently do nothing here, regardless of
+# whether the extension installed correctly. `dconf write` sidesteps schema
+# resolution entirely: it writes straight to the dconf keys the extension reads
+# from at the path its schema declares (org/.../rounded-window-corners-reborn),
+# which works whether or not gnome-shell has loaded the extension yet.
+VXO_ROUNDED_DCONF_BASE="/org/gnome/shell/extensions/rounded-window-corners-reborn"
+
+# The radius (and the border color/enable flags below it) live inside
+# global-rounded-corner-settings, a single a{sv} dict holding padding,
+# borderRadius, smoothing, borderColor and the keep-when-maximized flags.
+# dconf has no way to write one member of a dict, so the whole value is
+# rewritten. Every member below other than borderRadius/borderColor matches
+# the extension's own schema default.
 _vxo_rounded_corners_configure() {
     local radius="$VXO_ROUNDED_RADIUS"
 
@@ -240,25 +252,28 @@ _vxo_rounded_corners_configure() {
         radius=6
     fi
 
-    if ! gsettings writable "$VXO_ROUNDED_SCHEMA" global-rounded-corner-settings >/dev/null 2>&1; then
-        # Expected when the extension could not be installed above, or when its
-        # schemas failed to compile. Both already logged their own warning.
-        log_skip "the rounded-corners schema is not available, so the radius was not set"
+    if ! have dconf; then
+        log_skip "dconf not found, so the rounded-corner settings were not written"
         return 0
     fi
 
     local value
-    value="{'padding': <{'left': <uint32 1>, 'right': <uint32 1>, 'top': <uint32 1>, 'bottom': <uint32 1>}>, 'keepRoundedCorners': <{'maximized': <false>, 'fullscreen': <false>}>, 'borderRadius': <uint32 ${radius}>, 'smoothing': <0>, 'borderColor': <[0.5, 0.5, 0.5, 1.0]>, 'enabled': <true>}"
+    value="{'padding': <{'left': <uint32 1>, 'right': <uint32 1>, 'top': <uint32 1>, 'bottom': <uint32 1>}>, 'keepRoundedCorners': <{'maximized': <false>, 'fullscreen': <false>}>, 'borderRadius': <uint32 ${radius}>, 'smoothing': <0>, 'borderColor': <[0.75, 0.75, 0.75, 1.0]>, 'enabled': <true>}"
 
-    gset_soft "$VXO_ROUNDED_SCHEMA" global-rounded-corner-settings "$value"
+    run dconf write "$VXO_ROUNDED_DCONF_BASE/global-rounded-corner-settings" "$value"
+
+    # border-width is a separate top-level key from borderColor above, defaults
+    # to 0, and the extension draws no border at all until it is set. 1px,
+    # grayish-white (borderColor, [0.75, 0.75, 0.75] on a 0-1 scale) outline.
+    run dconf write "$VXO_ROUNDED_DCONF_BASE/border-width" "1"
 
     # The extension skips libadwaita apps by default, on the reasoning that they
     # round themselves. That leaves a visibly mixed desktop: GTK4 apps at their
     # own 12px and everything else at ours. Turning the skip off makes the
     # extension clip every window to the same radius, which is what "all windows
     # rounded" actually means.
-    gset_soft "$VXO_ROUNDED_SCHEMA" skip-libadwaita-app "false"
-    gset_soft "$VXO_ROUNDED_SCHEMA" skip-libhandy-app "false"
+    run dconf write "$VXO_ROUNDED_DCONF_BASE/skip-libadwaita-app" "false"
+    run dconf write "$VXO_ROUNDED_DCONF_BASE/skip-libhandy-app" "false"
 
-    log_ok "window corner radius set to ${radius}px for all windows"
+    log_ok "window corner radius set to ${radius}px, border 1px grayish-white, for all windows"
 }
