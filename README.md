@@ -258,15 +258,31 @@ installs the snap. Mozilla's repo is therefore paired with a pin that outranks
 it. Chrome, Brave and Vivaldi have no snap in the archive but get the same
 vendor-repo treatment for consistency.
 
-#### Wofi on GNOME is a compromise
+#### Ulauncher, and why not one of the tiling-WM launchers
 
-Wofi is built for `wlr-layer-shell`, a protocol GNOME Shell does not implement
-and has no plans to. It detects this and falls back to drawing as an ordinary
-window, so it works but appears in the window list and takes no exclusive
-keyboard grab. Every popular launcher in this family (`anyrun`, `sherlock`,
-`fuzzel`, `tofi`) has the same dependency and will not draw at all on GNOME. A
-launcher that renders as a normal window, such as `onagre`, is the option that
-actually fits this desktop.
+This used to ship wofi on `Super` + `R`. Wofi is built for `wlr-layer-shell`, a
+protocol GNOME Shell does not implement and has no plans to, so it fell back to
+drawing as an ordinary window: it appeared in the window list and never took an
+exclusive keyboard grab. Every launcher in that family (`anyrun`, `sherlock`,
+`fuzzel`, `tofi`) has the same dependency and will not draw at all on GNOME.
+
+Ulauncher is a GTK app that renders as a normal window by design, so it has
+nothing to fall back from. Three consequences are worth knowing about:
+
+- It comes from `ppa:agornostal/ulauncher`, the only PPA this installer adds.
+  Ulauncher is not in the Ubuntu archive at all, in any release. The stage
+  degrades to a warning if Launchpad is down or has no build for your release,
+  rather than costing you the rest of the base packages.
+- It is a daemon. `ulauncher-toggle`, the command `Super` + `F` runs, shows a
+  window that has to already exist, so an autostart entry goes into
+  `~/.config/autostart/`.
+- That entry sets `GDK_BACKEND=x11`. Ulauncher's window is an override-redirect
+  popup, and Wayland does not let a client position one, so the native-Wayland
+  process starts and then never appears. Running it through XWayland is
+  upstream's own documented workaround.
+
+The keybinding is GNOME's, not Ulauncher's own hotkey setting, for the same
+reason: Wayland has no global-hotkey grab for ordinary clients.
 
 #### The rounded corners extension takes three extra steps
 
