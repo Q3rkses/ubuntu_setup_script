@@ -161,8 +161,8 @@ export HWLOC_COMPONENTS=-gl
 _vxo_ros_source() {
     unset -f ros2 colcon _vxo_ros_source
 
-    if [ -f /opt/ros/lyrical/setup.bash ]; then
-        . /opt/ros/lyrical/setup.bash
+    if [ -f /opt/ros/humble/setup.bash ]; then
+        . /opt/ros/humble/setup.bash
     fi
 
     if [ -f "${VXO_ROS_WS:-$HOME/code/ros2_ws}/install/setup.bash" ]; then
@@ -179,7 +179,7 @@ _vxo_ros_source() {
     fi
 }
 
-if [ -f /opt/ros/lyrical/setup.bash ] || [ -f "${VXO_ROS_WS:-$HOME/code/ros2_ws}/install/setup.bash" ]; then
+if [ -f /opt/ros/humble/setup.bash ] || [ -f "${VXO_ROS_WS:-$HOME/code/ros2_ws}/install/setup.bash" ]; then
     ros2()   { _vxo_ros_source; ros2 "$@"; }
     colcon() { _vxo_ros_source; colcon "$@"; }
 fi

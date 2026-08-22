@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # tests/docker/run.sh: run the installer inside a throwaway Ubuntu container.
 #
-#   ./tests/docker/run.sh                        # 26.04, vortex profile, ROS (no build)
+#   ./tests/docker/run.sh                        # 22.04, vortex profile, ROS (no build)
 #   ./tests/docker/run.sh --profile personal
 #   ./tests/docker/run.sh --shell                # drop into the container instead
 #   ./tests/docker/run.sh --full-ros-build       # include rosdep + colcon (slow)
 #
-# What this proves: apt sources and package names resolve, the GCC 13 pin takes,
-# dotfiles install, the editor/browser/rust stages work, and ROS 2 Lyrical's apt
-# setup is correct on a real 26.04 userland.
+# What this proves: apt sources and package names resolve, the GCC 12 pin takes,
+# dotfiles install, the editor/browser/rust stages work, and ROS 2 Humble's apt
+# setup is correct on a real 22.04 userland.
 #
 # What it cannot prove: the GNOME stages. There is no session bus in a container,
 # so `shortcuts` and `wallpaper` abort by design. Verifying that they abort
@@ -19,7 +19,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-RELEASE="26.04"
+RELEASE="22.04"
 PROFILE="vortex"
 EDITOR_CHOICE="nvim"
 BROWSER_CHOICE="chrome"

@@ -71,20 +71,20 @@ section "System"
 # lsb_release is not installed on server/cloud/container Ubuntu.
 release="$(ubuntu_release)"
 case "$release" in
-    26.04) pass "Ubuntu release" "$release" ;;
-    *)     fail "Ubuntu release" "got '$release', expected 26.04" ;;
+    22.04) pass "Ubuntu release" "$release" ;;
+    *)     fail "Ubuntu release" "got '$release', expected 22.04" ;;
 esac
 
 for compiler in gcc g++; do
     if command -v "$compiler" >/dev/null 2>&1; then
         ver="$("$compiler" -dumpversion 2>/dev/null | cut -d. -f1)"
-        if [[ "$ver" == "13" ]]; then
-            pass "$compiler is version 13" "$("$compiler" --version | head -1)"
+        if [[ "$ver" == "12" ]]; then
+            pass "$compiler is version 12" "$("$compiler" --version | head -1)"
         else
-            fail "$compiler is version 13" "got major version '$ver', expected 13"
+            fail "$compiler is version 12" "got major version '$ver', expected 12"
         fi
     else
-        fail "$compiler is version 13" "'$compiler' is not on PATH"
+        fail "$compiler is version 12" "'$compiler' is not on PATH"
     fi
 done
 
@@ -354,8 +354,11 @@ else
     check_gsetting org.gnome.desktop.interface color-scheme "$want_scheme" \
         "Colour scheme matches the '$VXO_THEME' theme"
 
-    # accent-color is an enum without a 'magenta' member on 26.04; Ubuntu's
-    # magenta is upstream's 'pink'. See lib/desktop.sh.
+    # accent-color arrived in GNOME 47 and does not exist on 22.04's GNOME 42,
+    # so this reports SKIP here and the Yaru-magenta* GTK/icon variants are what
+    # actually carry the accent. Where the key does exist it is an enum with no
+    # 'magenta' member, and Ubuntu's magenta is upstream's 'pink'. See
+    # lib/desktop.sh.
     check_gsetting_soft org.gnome.desktop.interface accent-color "pink" \
         "Accent colour set"
 
@@ -383,8 +386,19 @@ else
 
     section "GNOME extensions"
 
-    rwc_uuid="rounded-window-corners@fxgn"
-    rwc_schema="org.gnome.shell.extensions.rounded-window-corners-reborn"
+    # Two upstreams, split by shell major, with different dconf schemas and
+    # different key names inside the settings dict. GNOME 42 (22.04) runs
+    # yilozt's original; GNOME 46+ runs the Reborn fork. See lib/extensions.sh.
+    shell_major="$(gnome-shell --version 2>/dev/null | sed -nE 's/^GNOME Shell ([0-9]+).*/\1/p')"
+    if [[ -n "$shell_major" ]] && ((shell_major >= 46)); then
+        rwc_uuid="rounded-window-corners@fxgn"
+        rwc_schema="org.gnome.shell.extensions.rounded-window-corners-reborn"
+        rwc_radius_key="borderRadius"
+    else
+        rwc_uuid="rounded-window-corners@yilozt"
+        rwc_schema="org.gnome.shell.extensions.rounded-window-corners"
+        rwc_radius_key="border_radius"
+    fi
 
     if [[ -f "$HOME/.local/share/gnome-shell/extensions/$rwc_uuid/metadata.json" ]]; then
         pass "Rounded corners extension installed" "$rwc_uuid"
@@ -404,13 +418,46 @@ else
         skip "Window corner radius" "the extension's schemas are not compiled, so its settings do not apply"
     else
         rwc_value="$(gsettings get "$rwc_schema" global-rounded-corner-settings 2>/dev/null)"
-        rwc_radius="$(sed -nE "s/.*'borderRadius': <?uint32 ([0-9]+)>?.*/\1/p" <<<"$rwc_value")"
+        rwc_radius="$(sed -nE "s/.*'${rwc_radius_key}': <?uint32 ([0-9]+)>?.*/\1/p" <<<"$rwc_value")"
         if [[ -z "$rwc_radius" ]]; then
-            fail "Window corner radius" "could not read borderRadius from: $rwc_value"
+            fail "Window corner radius" "could not read $rwc_radius_key from: $rwc_value"
         elif ((rwc_radius >= 4 && rwc_radius <= 8)); then
             pass "Window corner radius" "${rwc_radius}px"
         else
             fail "Window corner radius" "got ${rwc_radius}px, expected 4-8. Re-run with --rounded-radius=N"
+        fi
+    fi
+
+    # Lock screen extension, also split by shell major: Lockscreen Studio's
+    # metadata starts at 45, so GNOME 42 gets Blur my Shell's lockscreen
+    # component instead. See lib/extensions.sh.
+    if [[ -n "$shell_major" ]] && ((shell_major >= 45)); then
+        lock_uuid="lockscreen-studio@pedro.projects"
+    else
+        lock_uuid="blur-my-shell@aunetx"
+    fi
+
+    if [[ -f "$HOME/.local/share/gnome-shell/extensions/$lock_uuid/metadata.json" ]]; then
+        pass "Lock screen extension installed" "$lock_uuid"
+    else
+        fail "Lock screen extension installed" "not in ~/.local/share/gnome-shell/extensions. Run ./install.sh --only=gnome-extensions"
+    fi
+
+    if gsettings get org.gnome.shell enabled-extensions 2>/dev/null | grep -q "$lock_uuid"; then
+        pass "Lock screen extension enabled" "listed in enabled-extensions"
+    else
+        fail "Lock screen extension enabled" "not in org.gnome.shell enabled-extensions"
+    fi
+
+    # Only Blur my Shell gets settings written; Lockscreen Studio is left on its
+    # own defaults, so there is nothing to assert for it.
+    if [[ "$lock_uuid" == "blur-my-shell@aunetx" ]]; then
+        if ! command -v dconf >/dev/null 2>&1; then
+            skip "Lock screen blur enabled" "dconf is not installed"
+        elif [[ "$(dconf read /org/gnome/shell/extensions/blur-my-shell/lockscreen/blur)" == "true" ]]; then
+            pass "Lock screen blur enabled" "blur-my-shell lockscreen/blur = true"
+        else
+            fail "Lock screen blur enabled" "blur-my-shell lockscreen/blur is not true. Run ./install.sh --only=gnome-extensions"
         fi
     fi
 fi
@@ -473,6 +520,18 @@ section "Apps and dev tools"
 for tool in docker btop tmux clangd clang-format shellcheck shfmt doxygen; do
     check_cmd "$tool installed" "$tool"
 done
+
+# The GNOME front-ends. Both are only meaningful on a desktop session, and the
+# binary that gnome-shell-extension-manager installs is called extension-manager,
+# not gnome-extensions-manager, which is the usual reason a by-hand check for it
+# comes back empty on a machine that has it.
+if command -v gnome-shell >/dev/null 2>&1; then
+    check_cmd "GNOME Tweaks installed"      gnome-tweaks
+    check_cmd "Extension Manager installed" extension-manager
+else
+    skip "GNOME Tweaks installed"      "not a GNOME desktop"
+    skip "Extension Manager installed" "not a GNOME desktop"
+fi
 
 if grep -qw docker < <(id -nG "${USER:-$(id -un)}" 2>/dev/null); then
     pass "In the docker group" "docker works without sudo after the next login"
@@ -594,20 +653,20 @@ fi
 
 section "ROS 2"
 
-ROS_SETUP="/opt/ros/lyrical/setup.bash"
+ROS_SETUP="/opt/ros/humble/setup.bash"
 ROS_WS="$HOME/code/ros2_ws"
-ROS_REPOS=(vortex-auv vortex-msgs vortex-utils vortex-ci stonefish_ros2
+ROS_REPOS=(vortex-auv vortex-msgs vortex-vkf vortex-utils vortex-ci stonefish_ros2
            vortex-stonefish-interface vortex-stonefish-sim stim300-driver)
 
 if [[ "$VXO_ROS" != "1" ]]; then
-    skip "ROS 2 Lyrical" "not selected during install"
-elif [[ "$release" != "26.04" ]]; then
-    skip "ROS 2 Lyrical" "requires Ubuntu 26.04, this machine runs $release"
+    skip "ROS 2 Humble" "not selected during install"
+elif [[ "$release" != "22.04" ]]; then
+    skip "ROS 2 Humble" "requires Ubuntu 22.04, this machine runs $release"
 else
     if [[ -f "$ROS_SETUP" ]]; then
-        pass "ROS 2 Lyrical installed" "$ROS_SETUP"
+        pass "ROS 2 Humble installed" "$ROS_SETUP"
     else
-        fail "ROS 2 Lyrical installed" "$ROS_SETUP is missing"
+        fail "ROS 2 Humble installed" "$ROS_SETUP is missing"
     fi
 
     # "Not built yet" and "the build failed" look identical on disk, but they are
@@ -623,13 +682,33 @@ else
     fi
 
     yasmin_missing=()
-    for pkg in yasmin yasmin_ros yasmin_viewer; do
-        [[ -d "/opt/ros/lyrical/share/$pkg" ]] || yasmin_missing+=("$pkg")
+    for pkg in yasmin yasmin_ros; do
+        [[ -d "/opt/ros/humble/share/$pkg" ]] || yasmin_missing+=("$pkg")
     done
     if ((${#yasmin_missing[@]} == 0)); then
-        pass "YASMIN installed" "yasmin, yasmin_ros, yasmin_viewer"
+        pass "YASMIN installed" "yasmin, yasmin_ros"
     else
         fail "YASMIN installed" "missing: ${yasmin_missing[*]}. Re-run ./install.sh --only=ros2"
+    fi
+
+    # yasmin_viewer is checked separately and never fails the run:
+    # ros-humble-yasmin-viewer has not been released into the Humble index at
+    # all, so the installer skips it with a warning by design. Failing here
+    # would report a problem with no fix, and train people to ignore the
+    # verifier's output.
+    if [[ -d "/opt/ros/humble/share/yasmin_viewer" ]]; then
+        pass "YASMIN viewer installed" "yasmin_viewer"
+    else
+        skip "YASMIN viewer" "not released for Humble; build it in $ROS_WS/src if you need the web UI"
+    fi
+
+    # Stonefish is a plain C++ library, not a ROS package, so it shows up in
+    # neither /opt/ros nor the workspace. stonefish_ros2 find_package()s it, and
+    # without it every simulator package fails to configure.
+    if [[ -f /usr/local/lib/cmake/Stonefish/StonefishConfig.cmake ]]; then
+        pass "Stonefish library installed" "/usr/local/lib/cmake/Stonefish"
+    else
+        fail "Stonefish library installed" "the simulator packages cannot build without it. Run ./install.sh --only=ros2"
     fi
 
     missing_repos=()
@@ -696,6 +775,9 @@ These cannot be verified from a script, so try them now:
      radius on a GTK4 app (Files) as on kitty.
  11. Press ${C_BOLD}Super+Space${C_RESET}      → the input switcher cycles Norwegian, US
      and Japanese.
+ 12. Press ${C_BOLD}Super+L${C_RESET}          → the lock screen background is blurred rather
+     than sharp. On GNOME 42 this is Blur my Shell's lockscreen
+     component; nothing else it can blur should have changed.
 
 EOF
 

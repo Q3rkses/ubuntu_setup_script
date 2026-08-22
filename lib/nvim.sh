@@ -3,9 +3,10 @@
 #
 # Neovim deliberately does NOT come from apt: archive versions lag, and
 # cannot load a modern lazy.nvim config at all. We take the upstream stable
-# tarball instead and require >= 0.10.
+# tarball instead and require >= 0.10. On 22.04 that is not a preference but a
+# hard requirement — jammy's neovim is 0.6.1, which the config cannot load.
 #
-# SCOPE: Ubuntu 26.04 only, stock GNOME.
+# SCOPE: Ubuntu 22.04 only, stock GNOME.
 
 [[ -n "${_VXO_NVIM_SOURCED:-}" ]] && return 0
 _VXO_NVIM_SOURCED=1
@@ -123,12 +124,27 @@ _vxo_install_neovim_binary() {
 #   ripgrep        <Leader>fw live grep. Snacks' grep picker has no fallback.
 #   fd-find        the file picker's finder.
 #   fzf            fuzzy matching for the pickers, and Ctrl+R in the shell.
-#   nodejs, npm    mason installs bash-language-server, prettier and lemminx
-#                  as npm packages. Without npm they fail at install time and
-#                  the LSP simply never attaches, with no error in the editor.
+#   nodejs         mason installs bash-language-server, prettier and lemminx
+#                  as npm packages. Without a usable node/npm they fail at
+#                  install time and the LSP simply never attaches, with no
+#                  error in the editor. That is the failure mode this list has
+#                  always warned about; on 22.04 it is not hypothetical, see
+#                  _vxo_install_nodejs below. This entry is normally already
+#                  satisfied by the time apt_install reaches it, and stays in
+#                  the list so the NodeSource-unavailable fallback still ends
+#                  up with *a* node rather than none.
+#
+#                  npm is deliberately NOT listed. NodeSource's nodejs bundles
+#                  its own npm, while the archive npm depends on the archive
+#                  nodejs — asking apt for it would drag Node 12 back in on top
+#                  of the Node 20 we just installed and undo the whole point.
 #   python3-venv   mason builds basedpyright and any pip-backed tool inside a
-#                  venv. 26.04 is PEP 668 externally-managed, so without venv
-#                  every pip install is refused outright.
+#                  venv, so the module has to be present or those installs have
+#                  nowhere to go. Note that 22.04 is NOT a PEP 668
+#                  externally-managed release — a plain pip install still
+#                  succeeds here — so this is wanted for the ordinary reason
+#                  (isolation from the system interpreter), not because the
+#                  distro refuses pip outright.
 #   python3-full   the stdlib pieces (tkinter, distutils successors) that
 #                  python3-minimal leaves out and that some tools import.
 #   unzip          mason unpacks most of its release archives with it.
@@ -156,7 +172,6 @@ VXO_NVIM_DEPS=(
     fd-find
     fzf
     nodejs
-    npm
     python3-venv
     python3-full
     unzip
@@ -170,9 +185,149 @@ VXO_NVIM_DEPS=(
 
 _vxo_install_nvim_deps() {
     apt_update_once
+    # Before the apt_install below, not after: this is what puts a modern
+    # nodejs in place, so by the time the list is installed the `nodejs` entry
+    # in it is already satisfied and skips instead of pulling Node 12 in first
+    # and having it replaced a moment later.
+    _vxo_install_nodejs
     apt_install "${VXO_NVIM_DEPS[@]}"
     _vxo_install_lazygit
     _vxo_check_nvim_deps
+}
+
+# ─────────────────────────── node.js ───────────────────────────
+#
+# Ubuntu 22.04's archive nodejs is 12.22.9 and its npm is 8.5.1. mason installs
+# bash-language-server, prettier and lemminx as npm packages and every one of
+# them requires Node >= 18: on a stock jammy those installs fail inside mason,
+# nothing surfaces in the editor, and the language server for those filetypes
+# simply never attaches. That is the exact failure mode VXO_NVIM_DEPS has always
+# warned about, except on this release it happens on every single install rather
+# than in theory.
+#
+# So Node comes from NodeSource's apt repo instead, following the same
+# vendor-repo pattern as lib/browser.sh and _vxo_editor_vscode below: the key
+# dearmoured into /etc/apt/keyrings and a `signed-by=` source line. Never
+# apt-key (deprecated, and it trusts the key for every repo on the machine),
+# never a piped install script.
+#
+# 20 is the LTS line, which is what "new enough for mason" wants without
+# chasing current.
+VXO_NODE_MAJOR=20
+
+# What mason's npm-backed servers actually require. Anything at or above this is
+# left alone, so a machine that already has node from nvm, a newer NodeSource
+# line, or a hand install is not touched.
+VXO_NODE_MIN_MAJOR=18
+
+VXO_NODE_KEYRING="/etc/apt/keyrings/nodesource.gpg"
+VXO_NODE_LIST="/etc/apt/sources.list.d/nodesource.list"
+VXO_NODE_KEY_URL="https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key"
+
+# Echo the major version of the node on PATH, or nothing at all. Both names are
+# tried: everything mason runs invokes `node`, but Debian/Ubuntu have
+# historically shipped the interpreter as `nodejs`, and reporting "no node" for
+# a machine that has one under the other name would reinstall it every run.
+_vxo_node_major() {
+    local bin
+    for bin in node nodejs; do
+        if have "$bin"; then
+            "$bin" --version 2>/dev/null | sed -nE 's/^v?([0-9]+).*/\1/p'
+            return 0
+        fi
+    done
+}
+
+_vxo_node_recent_enough() {
+    local major
+    major="$(_vxo_node_major)"
+    [[ -n "$major" ]] || return 1
+    ((major >= VXO_NODE_MIN_MAJOR))
+}
+
+_vxo_install_nodejs() {
+    if _vxo_node_recent_enough; then
+        log_skip "node v$(_vxo_node_major) is already >= $VXO_NODE_MIN_MAJOR, leaving it alone"
+        return 0
+    fi
+
+    # A dry run must not reach the network. The key fetch below is a bare
+    # `curl`, the same reason _vxo_install_neovim_binary and
+    # _vxo_install_lazygit carry this guard: without it --dry-run really
+    # downloads the key and then warns about a step it was never going to take.
+    if [[ "${VXO_DRY_RUN:-0}" == "1" ]]; then
+        log_info "[dry-run] would add the NodeSource apt repo (node_${VXO_NODE_MAJOR}.x)"
+        log_info "[dry-run]   and install nodejs from it"
+        return 0
+    fi
+
+    apt_install ca-certificates curl gnupg
+
+    if _vxo_nodesource_repo; then
+        run sudo apt-get update -qq || log_warn "apt update after adding NodeSource reported a problem"
+        _VXO_APT_UPDATED=1
+
+        # nodejs only. NodeSource's package carries its own npm; asking for the
+        # archive npm here would pull the archive nodejs back in as its
+        # dependency and put Node 12 on the machine again.
+        if run sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs; then
+            hash -r 2>/dev/null || true
+            if _vxo_node_recent_enough; then
+                log_ok "Node.js $(node --version 2>/dev/null || printf 'v%s.x' "$VXO_NODE_MAJOR") installed from NodeSource"
+                return 0
+            fi
+            log_warn "NodeSource nodejs installed but node is still v$(_vxo_node_major)"
+        else
+            log_warn "the NodeSource nodejs package would not install"
+        fi
+    fi
+
+    _vxo_node_archive_fallback
+}
+
+# Key + source line. Returns non-zero, having warned, if either could not be put
+# in place, so the caller can degrade instead of failing the stage.
+_vxo_nodesource_repo() {
+    if [[ -f "$VXO_NODE_KEYRING" ]]; then
+        log_skip "NodeSource apt signing key already present"
+    else
+        local tmp
+        tmp="$(mktemp -d)"
+        if ! curl -fsSL -o "$tmp/nodesource.key" "$VXO_NODE_KEY_URL"; then
+            rm -rf "$tmp"
+            log_warn "could not fetch the NodeSource signing key from $VXO_NODE_KEY_URL"
+            return 1
+        fi
+        run sudo install -d -m 0755 /etc/apt/keyrings
+        if ! run sudo gpg --dearmor --yes -o "$VXO_NODE_KEYRING" "$tmp/nodesource.key"; then
+            rm -rf "$tmp"
+            log_warn "could not dearmour the NodeSource signing key"
+            return 1
+        fi
+        run sudo chmod 0644 "$VXO_NODE_KEYRING"
+        rm -rf "$tmp"
+        log_ok "added the NodeSource apt signing key"
+    fi
+
+    # "nodistro" is not a placeholder that should have been the codename.
+    # NodeSource's current layout publishes one release-independent suite per
+    # Node major, and that suite is literally named nodistro; there is no jammy
+    # component to point at.
+    _vxo_write_root_file "$VXO_NODE_LIST" \
+        "deb [signed-by=${VXO_NODE_KEYRING}] https://deb.nodesource.com/node_${VXO_NODE_MAJOR}.x nodistro main"
+}
+
+# Last resort when NodeSource is unreachable or refuses to install. The archive
+# pair is taken together on purpose: they depend on each other, and node without
+# npm leaves mason with no package manager at all, which is strictly worse than
+# an old one. Said loudly, because the resulting breakage is silent.
+_vxo_node_archive_fallback() {
+    log_warn "falling back to Ubuntu $(ubuntu_release)'s own nodejs and npm."
+    log_warn "That is Node 12, and mason's node-backed servers (bash-language-server,"
+    log_warn "prettier, lemminx) need Node >= ${VXO_NODE_MIN_MAJOR}. Expect them to fail to install"
+    log_warn "and their language servers never to attach."
+    log_warn "Retry once the network allows NodeSource: ./install.sh --only=editor"
+    apt_install nodejs npm
 }
 
 # lazygit is not optional the way the rest are. AstroNvim gates <Leader>gg and

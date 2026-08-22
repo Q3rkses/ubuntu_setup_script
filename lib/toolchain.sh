@@ -15,7 +15,7 @@ _VXO_TOOLCHAIN_SOURCED=1
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 # The one place the pinned version is written down.
-VXO_GCC_VERSION=13
+VXO_GCC_VERSION=12
 
 # update-alternatives priority. Higher than Ubuntu's stock entries so auto mode
 # also resolves to our pin.
@@ -47,8 +47,8 @@ _vxo_gcc_already_pinned() {
 # Answers "yes" unconditionally during a dry run. apt_update_once is itself
 # dry-run-skipped, so on a fresh image /var/lib/apt/lists is empty and every
 # apt-cache query comes back negative. Without this guard the check below reads
-# that as "gcc-13 does not exist on this release" and `die`s, which made
-# `--dry-run` impossible to complete on exactly the fresh 26.04 it targets. That
+# that as "gcc-12 does not exist on this release" and `die`s, which made
+# `--dry-run` impossible to complete on exactly the fresh 22.04 it targets. That
 # matters more than it sounds: a dry run is the thing you do before wiping a
 # working machine. lib/ros2.sh:_vxo_ros_apt_available carries the same guard for
 # the same reason.
@@ -64,10 +64,28 @@ _vxo_ensure_gcc_packages() {
 
     apt_update_once
 
-    # Ubuntu 26.04 carries gcc-13 in the archive (verified: 13.4.0-10ubuntu1), so
-    # no PPA is needed. If a future release drops it, fail loudly rather than
-    # silently reaching for ppa:ubuntu-toolchain-r/test. An unreviewed PPA on a
-    # C++ team's compiler is not something to add behind the user's back.
+    # Ubuntu 22.04 carries gcc-12 in the archive (verified: 12.3.0-1ubuntu1~22.04.3),
+    # so no PPA is needed. gcc-13 is NOT in jammy at all, which is why the pin is
+    # 12 here and not the 13 a newer release would offer.
+    #
+    # 12 is the newest the archive has, and it is the safe ceiling rather than a
+    # gamble: jammy's own libstdc++6 runtime is built from the gcc-12 source
+    # package, so a gcc-12 binary links against the C++ runtime the rest of the
+    # system already ships, and gcc-12 is ABI-compatible with the gcc-11-built
+    # ROS Humble binaries in the apt index — the two mix in one colcon workspace
+    # without the ODR/ABI surprises that a compiler newer than the platform
+    # runtime can produce.
+    #
+    # If a machine does hit something odd here, the one-line conservative
+    # alternative is VXO_GCC_VERSION=11: gcc-11 is jammy's default compiler and
+    # the exact compiler the ROS Humble binaries themselves were built with, so
+    # it removes the last bit of mixing. Change the constant, do not special-case
+    # around this check.
+    #
+    # If the pin is ever moved to a version this release does not carry, fail
+    # loudly rather than silently reaching for ppa:ubuntu-toolchain-r/test. An
+    # unreviewed PPA on a C++ team's compiler is not something to add behind the
+    # user's back.
     if ! _vxo_apt_available "gcc-$v" || ! _vxo_apt_available "g++-$v"; then
         die "gcc-$v / g++-$v are not available on Ubuntu $(ubuntu_release). \
 The installer pins GCC $v (see VXO_GCC_VERSION in lib/toolchain.sh); \

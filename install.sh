@@ -3,12 +3,12 @@
 #
 #   Fresh Ubuntu ISO  ──►  fully configured dev environment.
 #
-# Scope, deliberately narrow: Ubuntu 26.04 with stock GNOME. There is no
+# Scope, deliberately narrow: Ubuntu 22.04 with stock GNOME. There is no
 # distro detection and no window-manager logic anywhere in this repo. ROS 2
-# requires Ubuntu 26.04 and runs last, as an isolated failure domain.
+# Humble requires Ubuntu 22.04 and runs last, as an isolated failure domain.
 #
 # Preconditions you must satisfy before running this (see the checklist at the
-# top of README.md): Ubuntu 26.04, a sudo account, a working GitHub SSH key.
+# top of README.md): Ubuntu 22.04, a sudo account, a working GitHub SSH key.
 # The installer verifies all three up front and refuses to start otherwise.
 #
 #   ./install.sh              guided install
@@ -46,7 +46,7 @@ unset _mod
 VXO_STAGES=(
     "apt-upgrade|System update (apt update && apt upgrade)|vxo_apt_upgrade|hard"
     "base-packages|Base packages, Nerd Font and starship|vxo_base_packages|hard"
-    "toolchain|GCC/G++ 13 toolchain (pinned via update-alternatives)|vxo_toolchain|hard"
+    "toolchain|GCC/G++ 12 toolchain (pinned via update-alternatives)|vxo_toolchain|hard"
     "cxx-libs|Eigen (apt) and CasADi (built from source)|vxo_cxx_libs|soft"
     "apps|Dev tools, Docker, GNOME front-ends, input methods|vxo_apps|soft"
     "git-config|Git identity (name, email, defaults)|vxo_git_config|hard"
@@ -57,10 +57,10 @@ VXO_STAGES=(
     "browser|Web browser|vxo_browser|soft"
     "shortcuts|GNOME keyboard shortcuts|vxo_shortcuts|soft"
     "desktop|GNOME appearance, input sources, pointer, dock|vxo_desktop|soft"
-    "gnome-extensions|GNOME extensions (rounded window corners)|vxo_gnome_extensions|soft"
+    "gnome-extensions|GNOME extensions (rounded window corners, lock screen blur)|vxo_gnome_extensions|soft"
     "wallpaper|Desktop wallpaper (personal profile)|vxo_wallpaper|soft"
     "rust|Rust toolchain via rustup (personal profile)|vxo_rust|soft"
-    "ros2|ROS 2 Lyrical and the vortex workspace|vxo_ros2|soft"
+    "ros2|ROS 2 Humble and the vortex workspace|vxo_ros2|soft"
 )
 
 list_stages() {

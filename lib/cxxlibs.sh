@@ -5,16 +5,18 @@
 #
 # The two are handled differently on purpose.
 #
-# EIGEN comes from apt. It is header-only, 3.4.0 is the current stable release,
-# and it is the exact build every ROS 2 package in the archive was compiled
+# EIGEN comes from apt. It is header-only, jammy's libeigen3-dev is 3.4.0, the
+# current stable release, and it is the exact build every ROS 2 package in the
+# Humble index was compiled
 # against. Installing a second Eigen into /usr/local is actively harmful: CMake
 # finds it first, half your ROS packages then compile against one Eigen while
 # their dependencies were built against another, and the resulting ODR
 # violations show up as inexplicable segfaults instead of build errors.
 #
-# CASADI is built from source. The apt package (libcasadi-dev 3.7.0+ds2) works
-# and even carries IPOPT, but Debian strips the vendored solvers, so it ships
-# without SUNDIALS (no cvodes, no idas), without OSQP and without qpOASES. Code
+# CASADI is built from source. Where a release packages it at all, the apt
+# package works and even carries IPOPT, but Debian strips the vendored solvers,
+# so it ships without SUNDIALS (no cvodes, no idas), without OSQP and without
+# qpOASES. Code
 # that asks for one of those compiles fine and then dies at RUNTIME with a
 # "plugin not found" error, which is a miserable thing to debug an hour into a
 # mission test. Building from source with the bundled solvers enabled avoids the
@@ -244,10 +246,22 @@ _vxo_casadi_build() {
     run rm -rf "$build"
     run mkdir -p "$build"
 
-    # Ubuntu 26.04 ships CMake 4, which removed compatibility with
-    # cmake_minimum_required(VERSION <3.5). The bundled OSQP still declares one,
-    # so the build dies at the osqp-external configure step with a bare
-    # "CMake Error at CMakeLists.txt:2".
+    # CMAKE_POLICY_VERSION_MINIMUM re-admits projects that still declare
+    # cmake_minimum_required(VERSION <3.5) — compatibility CMake 4 removed and
+    # which the bundled OSQP still relies on, so on a CMake 4 host the build
+    # dies at the osqp-external configure step with a bare "CMake Error at
+    # CMakeLists.txt:2".
+    #
+    # Ubuntu 22.04 ships CMake 3.22, so that failure does not happen here, and
+    # 3.22 does not know the variable either: it was introduced in CMake 3.31 and
+    # anything older just lists it as an unused manually-specified variable, a
+    # warning in the configure output and nothing more.
+    #
+    # It is kept deliberately rather than deleted. It costs one harmless warning
+    # on this release, and it is what keeps this module building the moment the
+    # CMake under it moves — whether that is a newer Ubuntu or a hand-installed
+    # cmake on someone's jammy machine. Removing it would trade a warning for a
+    # failure that only appears on somebody else's box.
     #
     # This has to be BOTH a -D flag and an environment variable. The solvers are
     # built through ExternalProject_Add, which spawns a fresh cmake for each one

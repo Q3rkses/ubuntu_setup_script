@@ -35,7 +35,7 @@ USAGE
     Run with no options for the guided interactive install.
 
 BEFORE YOU RUN THIS
-    1. Ubuntu 26.04, freshly installed.
+    1. Ubuntu 22.04, freshly installed.
     2. An account with sudo.
     3. A GitHub SSH key that works. Check with: ssh -T git@github.com
        Set one up: https://docs.github.com/en/authentication/connecting-to-github-with-ssh
@@ -48,7 +48,7 @@ OPTIONS
     --name "First Last"        Full name (git config + welcome banner)
     --email you@example.com    Git email (optional; asked only if unset)
     --profile=vortex|personal  Which profile to install
-    --ros / --no-ros           Install ROS 2 Lyrical (personal profile only;
+    --ros / --no-ros           Install ROS 2 Humble (personal profile only;
                                the vortex profile always installs ROS 2)
     --skip-ros-build           Install ROS 2 and clone the workspace, but stop
                                before rosdep and colcon build
@@ -88,7 +88,7 @@ EXAMPLES
     ./install.sh --only=ros2              # retry just the ROS 2 stage
 
 SCOPE
-    Ubuntu 26.04 with stock GNOME only.
+    Ubuntu 22.04 with stock GNOME only.
 EOF
 }
 
@@ -239,11 +239,11 @@ collect_answers() {
     # there. Only the personal profile gets the choice.
     if [[ "$VXO_PROFILE" == "vortex" ]]; then
         VXO_ROS=1
-        log_info "vortex profile → ROS 2 Lyrical will be installed"
+        log_info "vortex profile → ROS 2 Humble will be installed"
     elif [[ -z "$VXO_ROS" ]]; then
         if [[ "$VXO_NONINTERACTIVE" == "1" ]]; then
             VXO_ROS=0
-        elif confirm "Install ROS 2 Lyrical as well? (adds ~30-60 min at the end)" "n"; then
+        elif confirm "Install ROS 2 Humble as well? (adds ~30-60 min at the end)" "n"; then
             VXO_ROS=1
         else
             VXO_ROS=0
@@ -272,9 +272,9 @@ collect_answers() {
     fi
     export VXO_EMAIL
 
-    # ROS 2 needs 26.04. Warn now rather than 40 minutes in.
-    if [[ "$VXO_ROS" == "1" && "$(ubuntu_release)" != "26.04" ]]; then
-        log_warn "ROS 2 Lyrical requires Ubuntu 26.04; you are on $(ubuntu_release)."
+    # ROS 2 Humble needs 22.04. Warn now rather than 40 minutes in.
+    if [[ "$VXO_ROS" == "1" && "$(ubuntu_release)" != "22.04" ]]; then
+        log_warn "ROS 2 Humble requires Ubuntu 22.04; you are on $(ubuntu_release)."
         log_warn "Everything else will install; the ROS 2 stage will abort on its own."
     fi
 }
@@ -289,7 +289,7 @@ ${C_BOLD}Plan${C_RESET}
   Browser   ${C_CYAN}${VXO_BROWSER}${C_RESET}
   Theme     ${C_CYAN}$(_vxo_describe_theme)${C_RESET}
   C++ libs  ${C_CYAN}Eigen (apt), CasADi ${VXO_CASADI_VERSION:-source} built with IPOPT/SUNDIALS/OSQP${C_RESET}
-  ROS 2     ${C_CYAN}$([[ "$VXO_ROS" == "1" ]] && echo "Lyrical + YASMIN (last stage)" || echo "no")${C_RESET}
+  ROS 2     ${C_CYAN}$([[ "$VXO_ROS" == "1" ]] && echo "Humble + YASMIN (last stage)" || echo "no")${C_RESET}
   Splash    ${C_CYAN}$(_vxo_describe_splash)${C_RESET}
   Boot logo ${C_CYAN}$([[ "${VXO_BOOT_SPLASH:-1}" == "1" ]] && echo "replaces the manufacturer/Ubuntu logo with the splash image" || echo "unchanged (--no-boot-splash)")${C_RESET}
   Wallpaper ${C_CYAN}$([[ "$VXO_PROFILE" == "personal" ]] && echo "GT3 RS ${VXO_WALLPAPER_MODE}" || echo "unchanged (vortex profile)")${C_RESET}

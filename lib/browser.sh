@@ -6,7 +6,7 @@
 # paired with an apt pin that outranks it. Chrome, Brave and Vivaldi have no snap
 # in the archive, but they get the same treatment for consistency.
 #
-# SCOPE: Ubuntu 26.04 only, stock GNOME.
+# SCOPE: Ubuntu 22.04 only, stock GNOME.
 
 [[ -n "${_VXO_BROWSER_SOURCED:-}" ]] && return 0
 _VXO_BROWSER_SOURCED=1

@@ -5,7 +5,12 @@
 # @@VXO_LOGO@@ placeholder that is substituted here with the profile's splash
 # image, so the same config serves the vortex logo and a personal one.
 #
-# SCOPE: Ubuntu 26.04 only, stock GNOME.
+# kitty is in the jammy archive at 0.21.2, which is old but supports every
+# option dotfiles/kitty/kitty.conf sets, so it is taken from apt as-is rather
+# than chased upstream. fastfetch is not in the archive at all on this release;
+# see _vxo_install_fastfetch.
+#
+# SCOPE: Ubuntu 22.04 only, stock GNOME.
 
 [[ -n "${_VXO_KITTY_FASTFETCH_SOURCED:-}" ]] && return 0
 _VXO_KITTY_FASTFETCH_SOURCED=1
@@ -57,8 +62,13 @@ _vxo_set_default_terminal() {
 
 # ─────────────────────────── fastfetch ───────────────────────────
 
-# Prefer the archive, but fall back to the upstream
-# .deb. 26.04 has it in universe and takes the apt path.
+# fastfetch is NOT in the Ubuntu 22.04 archive — it first appears in later
+# releases — so on this release the upstream .deb below is the normal path, not
+# an exotic fallback. Expect every 22.04 install to take it.
+#
+# The apt-first check stays anyway, and is not dead code: it makes the module
+# correct on a release that does package fastfetch, and it is what keeps a
+# re-run cheap on a machine where fastfetch arrived from apt some other way.
 _vxo_install_fastfetch() {
     if have fastfetch; then
         log_skip "fastfetch already installed ($(fastfetch --version 2>/dev/null | head -1))"

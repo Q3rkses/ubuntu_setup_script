@@ -147,7 +147,9 @@ _vxo_install_starship() {
 #
 # Not in the Ubuntu archive, so it comes from the upstream maintainer's PPA.
 # That is the only PPA this installer adds; see lib/apps.sh for the wider
-# distribution policy.
+# distribution policy. The PPA does publish a jammy build (verified:
+# 5.15.15-0ubuntu1ppa1~jammy), so on 22.04 this is the normal, working path
+# rather than a hopeful one.
 VXO_ULAUNCHER_PPA="ppa:agornostal/ulauncher"
 
 _vxo_install_ulauncher() {
@@ -193,8 +195,12 @@ _vxo_ulauncher_package() {
     log_ok "ulauncher installed from $VXO_ULAUNCHER_PPA"
 }
 
-# Both the deb822 (.sources) and the legacy (.list) layouts, because 26.04 writes
-# the former and an upgraded machine may still carry the latter.
+# Both the legacy (.list) and the deb822 (.sources) layouts. On 22.04
+# `add-apt-repository` writes the legacy one, so that is what this normally
+# finds; the deb822 form is checked too because newer releases write that
+# instead, and a machine that reached 22.04 by some other route (or that had the
+# PPA added by a newer tool) can carry either. Checking one layout only would
+# miss an already-configured PPA and re-add it on every run.
 _vxo_ulauncher_ppa_present() {
     grep -rqs "ppa.launchpadcontent.net/agornostal/ulauncher" \
         /etc/apt/sources.list.d/ /etc/apt/sources.list 2>/dev/null

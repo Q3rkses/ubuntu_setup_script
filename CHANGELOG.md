@@ -6,6 +6,59 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- **Back to Ubuntu 22.04 and ROS 2 Humble Hawksbill.** The Lyrical Luth / 26.04
+  migration is reverted. Lyrical support is not mature enough to put on the
+  machines people do mission work on this year — too much of the stack around it
+  (drivers, vendor packages, our own dependencies) is still catching up — so the
+  installer targets the battle-tested Humble/22.04 pair instead. This is a
+  deliberate step back, to be revisited when the newer stack has settled; the
+  26.04 entries below stay as they are because they accurately describe the
+  releases they were written for.
+
+  `require_ubuntu` now accepts `22.04` and nothing else, the ROS stage installs
+  `ros-humble-*` from the ROS 2 apt index (`ros2-apt-source` publishes a jammy
+  build, so the codename-derived URL is unchanged), and `.bashrc` sources
+  `/opt/ros/humble/setup.bash`.
+
+  What that costs, concretely, and what had to change to make it honest:
+
+  * **GCC is pinned to 12, not 13.** There is no `gcc-13` in the jammy archive
+    at all. 12 (12.3.0-1ubuntu1~22.04.3) is the newest it has, jammy's own
+    `libstdc++6` comes from that same source package, and it is ABI-compatible
+    with the gcc-11-built ROS Humble binaries. `VXO_GCC_VERSION=11` is the
+    one-line conservative alternative if a machine ever disagrees: 11 is jammy's
+    default and the exact compiler the Humble binaries were built with.
+  * **Node.js now comes from NodeSource.** Jammy's `nodejs` is 12.22.9, and
+    mason installs bash-language-server, prettier and lemminx as npm packages
+    that all require Node >= 18. On a stock 22.04 those installs fail inside
+    mason and the language server simply never attaches — the silent failure the
+    editor stage has always warned about, except here it happened every time.
+    The `editor` stage adds NodeSource's repo (keyring in `/etc/apt/keyrings`,
+    `signed-by=`, no `apt-key`) and installs Node 20 LTS from it, guarded so a
+    node already >= 18 is left alone and a dry run touches no network. `npm` is
+    gone from the dependency list: NodeSource's `nodejs` bundles its own, and the
+    archive `npm` depends on the archive `nodejs`, so asking for it would drag
+    Node 12 straight back in. If the repo cannot be reached the stage falls back
+    to the archive pair with a warning that says which servers will break.
+  * **Rounded corners is a different extension on GNOME 42.** 22.04 ships GNOME
+    Shell 42, and the Reborn fork (`rounded-window-corners@fxgn`) supports 46+
+    only. The stage now picks `rounded-window-corners@yilozt` (40-44) below
+    GNOME 46 and Reborn at or above it, and writes each variant's own dconf
+    layout — the fork renamed the path, the radius key (`borderRadius` vs
+    `border_radius`), the keep-when-maximised key, and moved the border colour
+    from a member of the settings dict to a separate top-level `(dddd)` key.
+    Writing a member a schema does not declare is stored and then ignored, which
+    is a silently inert extension, so each branch stays faithful to its schema.
+  * **`ros-humble-yasmin-viewer` does not exist.** `yasmin` and `yasmin-ros` are
+    both released for Humble; the web viewer never was. It stays in the package
+    list, where the existing "not released for this distro" path degrades it to
+    an accurate warning, and the verifier reports it as SKIP instead of failing
+    a check nobody can fix. Build it in `~/code/ros2_ws/src` if you need it.
+  * **fastfetch, lazygit and Neovim are always upstream now.** None of the three
+    is usable from the 22.04 archive (fastfetch and lazygit are absent, neovim is
+    0.6.1 and cannot load the config), so the fallback paths those stages already
+    carried are the normal paths on this release rather than the exception.
+
 - **Ulauncher replaces wofi as the application launcher, on `Super+F`.** This
   matches the reference machine, where wofi on `Super+R` had already been
   replaced by hand. Ulauncher is not in the Ubuntu archive, so the
@@ -52,6 +105,79 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   server does not attach".
 
 ### Fixed
+- **The ROS workspace could never build: `vortex_filtering` was never cloned.**
+  `ekf_pose_filtering`, `pose_filtering` and `line_filtering` inside vortex-auv
+  all `find_package(vortex_filtering)`, and no repository in `VXO_ROS_REPOS`
+  provided it. rosdep reported "Cannot locate rosdep definition for
+  [vortex_filtering]", colcon then failed at the first of the three and aborted
+  the six packages queued behind it. The package ships in `vortexntnu/vortex-vkf`
+  — the repository name does not contain the package name, which is why it was
+  easy to miss — and vortex-auv's own `dependencies.repos` lists it for exactly
+  this reason. It is now cloned with the rest.
+- **A compiler segfault in one test file took the whole workspace build down.**
+  colcon builds test targets by default, and `vortex_filtering`'s `ukf_test.cpp`
+  instantiates the UKF templates in a way that crashes the compiler outright:
+  "internal compiler error: Segmentation fault" at `ukf.hpp:252`, on gcc-11 and
+  gcc-12 alike, so this is an upstream template bug rather than something the
+  toolchain pin can dodge. It burned three and a half minutes before failing,
+  took `vortex_filtering` with it, and aborted every package queued behind it —
+  including the ones that only needed its library. The workspace build now
+  passes `-DBUILD_TESTING=OFF`, with which the same package builds in about six
+  seconds and exports the `vortex_filteringConfig.cmake` that
+  `ekf_pose_filtering`, `pose_filtering` and `line_filtering` look for. An
+  onboarding install owes the user a working workspace, not a test run; anyone
+  who wants the tests can build them deliberately and meet the ICE where it
+  makes sense to meet it.
+- **The Stonefish library was never installed, so the whole simulator set failed
+  to build.** `stonefish_ros2` does `find_package(Stonefish REQUIRED 1.5.0)`.
+  Stonefish is a plain C++ library, not a ROS package: it is not in the ROS apt
+  index, rosdep has no key for it, and nothing in the workspace pulls it in — so
+  colcon failed at `stonefish_ros2` with "Could not find a package configuration
+  file provided by Stonefish", which then aborted everything queued behind it.
+  The ROS stage now builds it from `vortexntnu/stonefish` (the fork
+  stonefish_ros2 is developed against, not patrykcieslak's upstream) and installs
+  it into `/usr/local` before rosdep and colcon run. It is tracked by branch
+  rather than pinned to a commit, unlike CasADi — the reasoning is written out at
+  `VXO_STONEFISH_REPO`. A failure here is a warning, not a stage failure: it
+  costs the simulator packages and nothing else.
+- **One unresolvable rosdep key meant NO dependencies were installed.**
+  `rosdep install` resolves every `package.xml` in the tree before it installs
+  anything, so a single key it cannot map aborts the run and installs nothing —
+  not even the dependencies it did resolve. stim300-driver's `feature/ros2-port`
+  branch builds with `ament_cmake` but still declares ROS 1's `roscpp`, a key
+  that cannot resolve in any ROS 2 distro, so rosdep bailed every time and the
+  workspace was built against whatever happened to be on the machine. The
+  failure surfaced much later and looked unrelated: colcon died in
+  `vortex_filtering` on `find_package(Gnuplot REQUIRED)`, whose gnuplot and
+  Boost keys rosdep would have installed. Known-unresolvable keys now go in
+  `VXO_ROS_ROSDEP_SKIP_KEYS` and are passed as `--skip-keys`, each with a
+  comment saying which upstream package.xml is wrong and why.
+- **A failed colcon build was recorded as a successful stage.** `run_stage` calls
+  soft stages as `"$fn" || rc=$?`, which suspends errexit for everything inside
+  the call, so a non-zero `_vxo_ros_build` did not end `vxo_ros2`: execution fell
+  through to the trailing `rm -f` and the function returned *that* command's
+  status. The result was a red "✗ colcon build failed" immediately followed by
+  "✓ [ros2] done" and "All applicable stages complete", the stage checkpointed,
+  and `--resume` skipping the one stage most likely to need a retry. The build's
+  status is now captured and returned, and the `ros_build_skipped` marker is
+  cleared only after a build that actually succeeded.
+- **The GNOME extension install could hand you an extension that cannot load.**
+  `extension-info/?uuid=...&shell_version=N` accepts `shell_version` and then
+  ignores it: asking for GNOME 42 still returns a top-level `download_url` for
+  the newest build, whose `shell_version_map` may be `['46', ..., '50']`. The
+  module's central claim — that it asks the API which release matches *this*
+  shell — was false as implemented, and the result unpacked, enabled and
+  reported success while the shell refused to load it. The version match is now
+  made locally: read `.shell_version_map`, look up this shell's major, and build
+  the download URL from that entry's `pk`. No entry means no build, and the
+  extension is skipped with a warning that names the shell versions upstream does
+  publish, so a version mismatch cannot be mistaken for a network failure.
+
+  The field is `pk`, not `version_tag`. `shell_version_map` entries carry exactly
+  `{"pk": N, "version": M}` — there is no `version_tag` member, even though the
+  download endpoint spells its query parameter that way and wants the `pk` as its
+  value. Reading `.version_tag` returns empty for every extension, which would
+  have made the new check skip all of them and install nothing at all.
 - **The magenta accent colour was never actually applied.**
   `org.gnome.desktop.interface accent-color` is an enum, and on Ubuntu 26.04 its
   members are blue, teal, green, yellow, orange, red, pink, purple, slate and
@@ -65,6 +191,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   now come from the same theme table entry, so they cannot drift apart again.
 
 ### Added
+- **A lock screen extension that exists on GNOME 42.** `lockscreen-studio@pedro.projects`
+  publishes builds for GNOME 45 and up only, so on 22.04 it was skipped and the
+  release shipped with no lock screen extension at all. The lock screen slot is
+  now resolved by shell major the same way rounded corners already was: 45+ keeps
+  Lockscreen Studio, anything older gets `blur-my-shell@aunetx`, whose metadata
+  covers 3.36 through 50 and whose `lockscreen` component is the part that
+  matters here. Blur my Shell blurs the panel, overview, app grid and application
+  windows out of the box; the stage writes its `lockscreen` settings and turns
+  every other component off, because the desktop stage owns how the desktop
+  looks and a live blur behind every window is not free on a laptop GPU.
+- **Extension Manager and GNOME Tweaks are verified, not just installed.**
+  Both were already in the apps stage's package set; `tests/verify_install.sh`
+  now checks for them on a GNOME session. Note the binary that
+  `gnome-shell-extension-manager` installs is `extension-manager` — checking for
+  `gnome-extensions-manager` by hand comes back empty on a machine that has it.
 - **Brave as a browser choice.** `--browser=brave`, alongside chrome, vivaldi
   and firefox, installed from Brave's own apt repo with the vendor keyring in
   `/etc/apt/keyrings` and the architecture taken from `dpkg --print-architecture`

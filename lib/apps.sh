@@ -16,7 +16,7 @@
 # benefit. If you find yourself wanting to add a flatpak here, add the apt
 # package instead, or leave it to be installed by hand.
 #
-# SCOPE: Ubuntu 26.04 only, stock GNOME.
+# SCOPE: Ubuntu 22.04 only, stock GNOME.
 
 [[ -n "${_VXO_APPS_SOURCED:-}" ]] && return 0
 _VXO_APPS_SOURCED=1

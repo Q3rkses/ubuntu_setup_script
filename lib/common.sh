@@ -2,7 +2,7 @@
 # lib/common.sh: logging, state/checkpointing, idempotency helpers, error trapping.
 # Sourced by install.sh and by every lib/*.sh module. Never executed directly.
 #
-# SCOPE: Ubuntu 26.04 only, stock GNOME. No distro detection, no WM logic.
+# SCOPE: Ubuntu 22.04 only, stock GNOME. No distro detection, no WM logic.
 
 # Guard against double-sourcing.
 [[ -n "${_VXO_COMMON_SOURCED:-}" ]] && return 0
@@ -112,7 +112,7 @@ clear_stage() {
 # stage_abort <reason>
 #
 # A module calls this to bow out of its own stage without failing the install,
-# e.g. ROS 2 on a non-26.04 host, or rust on the vortex profile. The stage is
+# e.g. ROS 2 on a non-22.04 host, or rust on the vortex profile. The stage is
 # NOT checkpointed, so --resume will try it again.
 #
 # The stage name is recorded so the final summary can tell "deliberately not
@@ -347,8 +347,8 @@ require_ubuntu() {
 
     local rel; rel="$(ubuntu_release)"
     case "$rel" in
-        26.04) log_ok "Ubuntu $rel is supported" ;;
-        *) die "Unsupported Ubuntu release: $rel. This installer targets Ubuntu 26.04 only." ;;
+        22.04) log_ok "Ubuntu $rel is supported" ;;
+        *) die "Unsupported Ubuntu release: $rel. This installer targets Ubuntu 22.04 (jammy) only." ;;
     esac
 }
 

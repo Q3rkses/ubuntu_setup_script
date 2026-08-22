@@ -2,12 +2,12 @@
 #
 # This proves the parts of the install that don't need a desktop: apt sources,
 # package names, the GCC pin, dotfiles, editor, browser repos, rustup, and the
-# ROS 2 Lyrical apt setup. It deliberately cannot test the GNOME stages
+# ROS 2 Humble apt setup. It deliberately cannot test the GNOME stages
 # (shortcuts, wallpaper), because there is no session bus in a container. Those
 # stages are expected to abort cleanly here. That they abort *cleanly* rather
 # than crashing is itself part of what this tests.
 
-ARG UBUNTU_RELEASE=26.04
+ARG UBUNTU_RELEASE=22.04
 FROM ubuntu:${UBUNTU_RELEASE}
 
 ENV DEBIAN_FRONTEND=noninteractive

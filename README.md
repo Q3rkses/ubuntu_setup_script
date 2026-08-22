@@ -6,7 +6,7 @@
 
 **Fresh Ubuntu ISO to a fully configured development environment, in one command.**
 
-Ubuntu 26.04 · stock GNOME · ROS 2 Lyrical Luth
+Ubuntu 22.04 · stock GNOME · ROS 2 Humble Hawksbill
 
 </div>
 
@@ -19,7 +19,7 @@ configures it for you in a couple of clicks.
 
 | # | You need | How to check |
 |---|---|---|
-| 1 | **Ubuntu 26.04**, freshly installed | `lsb_release -r` prints `26.04` |
+| 1 | **Ubuntu 22.04**, freshly installed | `lsb_release -r` prints `22.04` |
 | 2 | **An account with sudo** | `sudo true` succeeds |
 | 3 | **A working GitHub SSH key** | `ssh -T git@github.com` greets you by username |
 | 4 | **Membership of the `vortexntnu` GitHub org** | you can open [vortex-auv](https://github.com/vortexntnu/vortex-auv) |
@@ -36,8 +36,8 @@ Repartitioning a disk wrongly loses data and this installer cannot help with
 that part.
 
 > [!IMPORTANT]
-> Ubuntu 26.04 only. ROS 2 Lyrical Luth pairs with 26.04 "Resolute", so on any
-> other release the installer stops instead of half working.
+> Ubuntu 22.04 only. ROS 2 Humble Hawksbill pairs with 22.04 "Jammy Jellyfish",
+> so on any other release the installer stops instead of half working.
 
 <details>
 <summary><b>Why the SSH key is your problem and not the installer's</b></summary>
@@ -120,7 +120,7 @@ Every prompt has a flag, so it works over SSH or in CI:
 --wallpaper=slideshow|static|none
                            Desktop wallpaper (personal profile)
 --no-boot-splash           Leave the Plymouth boot theme alone
---rounded-radius=N         Window corner radius in pixels (default 6, 0 = off)
+--rounded-radius=N         Window corner radius in pixels (default 8, 0 = off)
 --yes, -y                  Non-interactive: accept defaults, never prompt
 --resume                   Skip stages already recorded as complete
 --dry-run                  Print what would happen; change nothing
@@ -142,9 +142,9 @@ safe, and checkpointed, so a failure never costs you the stages before it.
 |---|---|---|
 | 1 | `apt-upgrade` | `apt update && apt upgrade` |
 | 2 | `base-packages` | Build tooling, CLI essentials, JetBrainsMono Nerd Font, starship, ulauncher |
-| 3 | `toolchain` | GCC/G++ 13, pinned and made default |
+| 3 | `toolchain` | GCC/G++ 12, pinned and made default |
 | 4 | `cxx-libs` | Eigen from apt, CasADi built from source with IPOPT, SUNDIALS, OSQP and qpOASES |
-| 5 | `apps` | clangd, clang-format/tidy, shellcheck, btop, tmux, Docker, gnome-tweaks, ibus-mozc |
+| 5 | `apps` | clangd, clang-format/tidy, shellcheck, btop, tmux, Docker, gnome-tweaks, Extension Manager, ibus-mozc |
 | 6 | `git-config` | Git name, email, default branch, rebase on pull, editor |
 | 7 | `bashrc` | Managed `.bashrc`, aliases, ble.sh autosuggestions, NVM, `~/code/ros2_ws` |
 | 8 | `kitty-fastfetch` | Kitty with Catppuccin Mocha, fastfetch splash with a real image logo |
@@ -153,10 +153,10 @@ safe, and checkpointed, so a failure never costs you the stages before it.
 | 11 | `browser` | Chrome, Brave, Vivaldi or Firefox from the vendor's apt repo |
 | 12 | `shortcuts` | GNOME keybindings, static 4 workspaces |
 | 13 | `desktop` | Colour scheme and accent, input sources, touchpad, dock, monospace font |
-| 14 | `gnome-extensions` | Rounded window corners at 6px |
+| 14 | `gnome-extensions` | Rounded window corners at 8px, lock screen blur |
 | 15 | `wallpaper` | GT3 RS slideshow (personal profile) |
 | 16 | `rust` | rustup stable, rust-analyzer, clippy, rustfmt (personal profile) |
-| 17 | `ros2` | ROS 2 Lyrical, YASMIN, the eight Vortex repos, rosdep and colcon |
+| 17 | `ros2` | ROS 2 Humble, YASMIN, the nine Vortex repos, the Stonefish library, rosdep and colcon |
 
 Two orderings are load-bearing. `desktop` pins dock favourites and only pins
 entries whose `.desktop` file exists, so it follows `browser`, `editor` and
@@ -169,9 +169,10 @@ follows `kitty-fastfetch`.
   starship prompt and Neovim's status line render as rows of ▯ boxes. The
   `desktop` stage also points GNOME's monospace font at it, so the prompt keeps
   its icons in GNOME Terminal and Text Editor, not just in Kitty.
-- **GCC is pinned to 13,** not "newest", because two people installing a month
-  apart would otherwise get different compilers. Bump the constant in
-  `lib/toolchain.sh` deliberately.
+- **GCC is pinned to 12,** not "newest", because two people installing a month
+  apart would otherwise get different compilers. 12 is also the newest GCC in
+  the 22.04 archive, and it is ABI-compatible with the gcc-11-built ROS Humble
+  binaries. Bump the constant in `lib/toolchain.sh` deliberately.
 - **No snap, no flatpak.** Everything is apt, from the archive or a vendor repo.
   If something you want is missing, prefer the apt package, then `cargo install`.
 - **Docker comes from Docker's repo,** not `docker.io`, which omits the compose
@@ -184,6 +185,13 @@ follows `kitty-fastfetch`.
   servers itself, but the config also shells out to lazygit, ripgrep, fd and
   gdu. lazygit in particular is not decorative: nvimconf enables the snacks
   lazygit picker, which errors without the binary.
+- **Node.js comes from NodeSource, not the archive.** 22.04 ships Node 12, and
+  mason's npm-backed servers (bash-language-server, prettier, lemminx) need
+  Node 18 or newer, so on a stock jammy they fail to install and the language
+  server simply never attaches. The `editor` stage installs Node 20 LTS from
+  NodeSource and falls back to the archive with a loud warning if that repo is
+  unreachable. Neovim itself, lazygit and fastfetch are not in the 22.04 archive
+  in a usable version either, so all three come from upstream releases.
 - **Your GNOME settings are backed up first.** `shortcuts` and `desktop` both
   dump `/org/gnome/` to `~/.local/state/vortex-onboarding/backups/` before
   writing anything.
@@ -287,18 +295,38 @@ nothing to fall back from. Three consequences are worth knowing about:
 The keybinding is GNOME's, not Ulauncher's own hotkey setting, for the same
 reason: Wayland has no global-hotkey grab for ordinary clients.
 
-#### The rounded corners extension takes three extra steps
+#### Installing an extension takes three extra steps
 
-A plain unzip does not work. The stage asks the extension site which release
-matches your shell, because extensions are pinned to a GNOME Shell major version
-and "latest" is frequently one that silently refuses to load. It compiles the
+A plain unzip does not work. Extensions are pinned to a GNOME Shell major
+version, and extensions.gnome.org will happily hand you the newest build no
+matter which shell version you ask it for, so the stage reads the extension's
+`shell_version_map`, takes the `pk` listed for *your* shell, and downloads that
+build by `pk` — or, if the map has no entry for your shell, skips with a warning
+instead of installing something that silently refuses to load. It compiles the
 schemas, since an extension whose schemas are uncompiled throws on its first
 settings read. And it enables the extension through `gsettings` rather than
 `gnome-extensions enable`, because under Wayland the running shell has not
 scanned the new directory yet.
 
-It also turns off the extension's "skip libadwaita apps" default, which would
-otherwise leave GTK4 apps at their own 12px and everything else at yours.
+Both extensions this stage installs are chosen by shell major, because on 22.04's
+GNOME 42 the upstream used on 26.04 does not publish a build at all:
+
+| | GNOME 42 (22.04) | current GNOME |
+|---|---|---|
+| Rounded corners | `rounded-window-corners@yilozt` (40-44) | `@fxgn` "Reborn" (46+) |
+| Lock screen | `blur-my-shell@aunetx` (3.36-50) | `lockscreen-studio@pedro.projects` (45+) |
+
+The two rounded-corners upstreams use different dconf paths and different key
+names inside the settings dict, so the stage writes settings for whichever one it
+actually installed. It also turns off that extension's "skip libadwaita apps"
+default, which would otherwise leave GTK4 apps at their own 12px and everything
+else at yours.
+
+Blur my Shell is the wider-ranging of the two lock screen options — left alone it
+also blurs the panel, the overview, the app grid and application windows — so the
+stage enables its `lockscreen` component and turns the rest off. Turn any of them
+back on from Extension Manager, which the apps stage installs (the binary is
+`extension-manager`, not `gnome-extensions-manager`).
 
 #### The boot splash needs an initramfs rebuild
 
@@ -344,10 +372,31 @@ you only re-run this one. Build log:
 `~/.local/state/vortex-onboarding/logs/colcon-build.log`.
 
 YASMIN, the state machine library mission logic is written against, comes from
-the ROS apt index (`ros-lyrical-yasmin`, `-yasmin-ros`, `-yasmin-viewer`) rather
-than the workspace, so it gets security updates and does not lengthen your
-colcon build. The viewer draws the running state machine and is the fastest way
-to see why a mission is stuck.
+the ROS apt index (`ros-humble-yasmin`, `-yasmin-ros`) rather than the
+workspace, so it gets security updates and does not lengthen your colcon build.
+
+`ros-humble-yasmin-viewer`, the web UI that draws the running state machine, has
+never been released for Humble. The installer asks for it, reports that it is
+not in the index, and carries on; build it in `~/code/ros2_ws/src` if you need
+it.
+
+#### Two things the workspace needs that nothing in it provides
+
+`vortex-vkf` supplies the `vortex_filtering` package. Three packages in
+vortex-auv (`ekf_pose_filtering`, `pose_filtering`, `line_filtering`)
+`find_package` it, and the repository name does not contain the package name, so
+it is easy to leave out of a clone list — vortex-auv's own `dependencies.repos`
+lists it for the same reason.
+
+**Stonefish** is a plain C++ simulation library, not a ROS package. It is not in
+the ROS apt index, rosdep has no key for it, and nothing in the workspace pulls
+it in — but `stonefish_ros2` does `find_package(Stonefish REQUIRED 1.5.0)`, so
+without it every simulator package fails to configure. The stage builds it from
+[vortexntnu/stonefish](https://github.com/vortexntnu/stonefish) (the fork
+stonefish_ros2 is developed against, not patrykcieslak's upstream) into
+`/usr/local` before rosdep and colcon run, caching the source under
+`~/.cache/vortex-onboarding/stonefish` so a re-run is a no-op until the fork
+moves. A Stonefish failure costs the simulator packages and nothing else.
 
 Repositories cloned into `~/code/ros2_ws/src`:
 
@@ -355,6 +404,7 @@ Repositories cloned into `~/code/ros2_ws/src`:
 |---|---|
 | `vortex-auv` | `development` |
 | `vortex-msgs` | `main` |
+| `vortex-vkf` | `main` |
 | `vortex-utils` | `main` |
 | `vortex-ci` | `main` |
 | `stonefish_ros2` | `main` |
@@ -406,13 +456,14 @@ Then confirm the things a script cannot press keys for:
 - [ ] **`Super` + `2`** switches workspace, **`Super` + `Shift` + `3`** moves a
       window, **`Super` + `Q`** closes one, **`Super` + `F`** opens Ulauncher
 - [ ] `nvim` opens with your config and no error banner
-- [ ] `gcc --version` reports 13.x
+- [ ] `gcc --version` reports 12.x
 - [ ] Your browser launches from the Activities overview
 - [ ] Personal profile: the background is a GT3 RS and `cargo --version` works
 - [ ] With ROS: `ros2 doctor` is clean and `ros2 run demo_nodes_cpp talker`
       prints messages
-- [ ] With ROS: `python3 -c "import yasmin, yasmin_ros"` and
-      `ros2 run yasmin_viewer yasmin_viewer_node` both work
+- [ ] With ROS: `python3 -c "import yasmin, yasmin_ros"` works. (The viewer,
+      `ros2 run yasmin_viewer yasmin_viewer_node`, is not released for Humble
+      and will not be there unless you built it yourself.)
 - [ ] CasADi resolves the plugins the apt build lacks:
 
       ```bash
@@ -457,13 +508,13 @@ onboarding/
 │   ├── common.sh              logging, checkpointing, idempotency helpers
 │   ├── prompts.sh             argument parsing and interactive Q&A
 │   ├── base.sh                apt upgrade, base packages, font, starship
-│   ├── toolchain.sh           GCC 13
+│   ├── toolchain.sh           GCC 12
 │   ├── cxxlibs.sh             Eigen (apt) and CasADi (source build)
 │   ├── apps.sh                dev tools, Docker, GNOME front-ends, input methods
 │   ├── ssh_github.sh          GitHub SSH precondition and git identity
 │   ├── shortcuts.sh           GNOME keybindings
 │   ├── desktop.sh             appearance, input sources, pointer, dock
-│   ├── extensions.sh          GNOME extensions (rounded window corners)
+│   ├── extensions.sh          GNOME extensions (rounded corners, lock screen blur)
 │   ├── bashrc.sh              shell configuration and ble.sh
 │   ├── kitty_fastfetch.sh     terminal and splash
 │   ├── plymouth.sh            boot splash theme
@@ -471,7 +522,7 @@ onboarding/
 │   ├── nvim.sh                editor (Neovim or VS Code)
 │   ├── browser.sh             Chrome / Brave / Vivaldi / Firefox
 │   ├── rust.sh                rustup (personal profile)
-│   └── ros2.sh                ROS 2 Lyrical (deferred to last)
+│   └── ros2.sh                ROS 2 Humble (deferred to last)
 ├── dotfiles/                  the actual .bashrc, aliases, kitty, fastfetch,
 │                              blerc, ulauncher
 ├── assets/                    logos, wallpapers, README screenshots
@@ -485,7 +536,7 @@ onboarding/
 ## Testing changes
 
 ```bash
-./tests/docker/run.sh                    # 26.04, vortex profile
+./tests/docker/run.sh                    # 22.04, vortex profile
 ./tests/docker/run.sh --profile personal
 ./tests/docker/run.sh --shell            # poke around inside instead
 ```

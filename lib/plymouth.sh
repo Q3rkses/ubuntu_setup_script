@@ -28,7 +28,7 @@
 # Reverse the whole thing with:
 #   sudo update-alternatives --auto default.plymouth && sudo update-initramfs -u
 #
-# SCOPE: Ubuntu 26.04 only.
+# SCOPE: Ubuntu 22.04 only.
 
 [[ -n "${_VXO_PLYMOUTH_SOURCED:-}" ]] && return 0
 _VXO_PLYMOUTH_SOURCED=1

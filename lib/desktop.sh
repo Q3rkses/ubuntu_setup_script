@@ -26,20 +26,28 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 # ─────────────────────────── the settings ───────────────────────────
 
-# Appearance. Two mechanisms have to agree, because Ubuntu moved from named Yaru
-# theme variants (Yaru-magenta-dark) to a native accent-colour key around
-# GNOME 47 without dropping the variants:
+# Appearance. Two mechanisms, and on this release only one of them is real.
 #
-#   * accent-color   drives libadwaita/GTK4 apps and the shell on GNOME 47+.
-#   * gtk-theme      still drives GTK3 apps, which is most of the desktop's
-#     icon-theme    long tail.
+# Ubuntu tinted the desktop with named Yaru theme variants (Yaru-magenta-dark)
+# for years and only gained a native accent-colour key around GNOME 47. Ubuntu
+# 22.04 is GNOME Shell 42, which predates that key entirely:
 #
-# IMPORTANT, and the reason this used to half-work: accent-color is an ENUM, and
-# on Ubuntu 26.04 its members are blue, teal, green, yellow, orange, red, pink,
-# purple, slate and brown. There is no 'magenta'. Writing it made gsettings
-# reject the value and the desktop kept whatever accent it already had, silently.
-# Ubuntu's magenta is exposed upstream as 'pink', so that is what we write; the
-# Yaru-magenta* variants below carry the actual magenta tint for GTK3.
+#   * gtk-theme / icon-theme   THE mechanism here. The Yaru-magenta and
+#     Yaru-magenta-dark variants ship in jammy's yaru-theme-gtk and
+#     yaru-theme-icon (verified: 22.04.5), and they are what actually colours
+#     the desktop on 22.04 — GTK3 apps, which on GNOME 42 is nearly everything,
+#     as well as the shell.
+#   * accent-color             does not exist on GNOME 42. gset_soft checks
+#     `gsettings writable` first, so the write below is a logged skip rather
+#     than an error, and it is kept purely as forward compatibility for a
+#     machine that later moves to a GNOME which does have the key.
+#
+# The value itself is still worth explaining, because it is not the obvious one:
+# accent-color is an ENUM whose members are blue, teal, green, yellow, orange,
+# red, pink, purple, slate and brown. There is no 'magenta' on any release that
+# has the key. Ubuntu's magenta is exposed upstream as 'pink', so 'pink' is what
+# gets written wherever the key exists; the Yaru-magenta* variants below are
+# what carry the real magenta tint on 22.04.
 VXO_DESKTOP_ACCENT="pink"
 
 # Theme table: VXO_THEME → color-scheme, GTK theme, icon theme.
@@ -200,19 +208,21 @@ _vxo_desktop_appearance() {
         log_skip "'$mono' is not installed, leaving the GNOME monospace font alone"
     fi
 
-    # GNOME 47+ / Ubuntu's current approach: a named accent colour applied to
-    # whatever the base theme is.
+    # Forward compatibility only. accent-color arrived in GNOME 47 and does not
+    # exist on 22.04's GNOME 42, so gset_soft skips it here; it is left in place
+    # so this module still does the right thing on a newer shell.
     gset_soft "$iface" accent-color "'$VXO_DESKTOP_ACCENT'"
 
-    # The older approach: a per-accent Yaru theme variant. Only set when the
-    # theme is really installed, so this is a no-op on a release that dropped
-    # the variants in favour of accent-color above. The Yaru-* variants come
-    # from yaru-theme-gtk / yaru-theme-icon, which a stock Ubuntu desktop
-    # already has; a server or derivative image may not.
+    # The mechanism that actually applies the accent on this release: a
+    # per-accent Yaru theme variant. Only set when the theme is really
+    # installed, because pointing gtk-theme at a missing theme silently gives
+    # you Adwaita light. The Yaru-* variants come from yaru-theme-gtk /
+    # yaru-theme-icon, which a stock Ubuntu desktop already has; a server or
+    # derivative image may not.
     if _vxo_theme_installed "$gtk_theme" themes; then
         gset_soft "$iface" gtk-theme "'$gtk_theme'"
     else
-        log_skip "GTK theme '$gtk_theme' is not installed (accent-color covers this on newer GNOME)"
+        log_skip "GTK theme '$gtk_theme' is not installed, so the desktop keeps its current accent (install yaru-theme-gtk)"
     fi
 
     if _vxo_theme_installed "$icon_theme" icons; then

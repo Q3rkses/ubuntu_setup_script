@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/ros2.sh: ROS 2 Lyrical Luth and the Vortex workspace.
+# lib/ros2.sh: ROS 2 Humble Hawksbill and the Vortex workspace.
 #
 # This is the installer's isolated failure domain and always runs last. A colcon
 # build can take the better part of an hour and can fail for reasons that have
@@ -7,10 +7,13 @@
 # "soft" mode: it may fail without costing the user their dotfiles or editor.
 # Re-run it on its own with:  ./install.sh --only=ros2
 #
-# Lyrical Luth pairs with Ubuntu 26.04 "Resolute" and nothing else. There is
-# deliberately no release-to-distro mapping and no Humble fallback here.
+# Humble Hawksbill pairs with Ubuntu 22.04 "Jammy Jellyfish" and nothing else:
+# the binary packages in the ROS apt index are built against jammy's libstdc++,
+# Python 3.10 and Qt, so they neither install nor run on another release. There
+# is deliberately no release-to-distro mapping here — one distro, one release,
+# and a clean abort on anything else.
 #
-# SCOPE: Ubuntu 26.04 only.
+# SCOPE: Ubuntu 22.04 only.
 
 [[ -n "${_VXO_ROS2_SOURCED:-}" ]] && return 0
 _VXO_ROS2_SOURCED=1
@@ -18,18 +21,27 @@ _VXO_ROS2_SOURCED=1
 # shellcheck source=lib/common.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
-VXO_ROS_DISTRO="lyrical"
-VXO_ROS_REQUIRED_RELEASE="26.04"
+VXO_ROS_DISTRO="humble"
+VXO_ROS_REQUIRED_RELEASE="22.04"
 VXO_ROS_SETUP="/opt/ros/${VXO_ROS_DISTRO}/setup.bash"
 VXO_ROS_WS="$HOME/code/ros2_ws"
 
-# Extra ROS packages beyond ros-lyrical-desktop, written without the
+# Extra ROS packages beyond ros-humble-desktop, written without the
 # "ros-<distro>-" prefix so the distro is named in exactly one place.
 #
 # yasmin is the finite state machine library Vortex builds mission logic on.
 # yasmin-ros adds the ROS 2 integration (action/service/topic states), and
 # yasmin-viewer is the web UI that draws the running state machine, which is the
 # fastest way to see why a mission is stuck.
+#
+# KNOWN ABSENT ON HUMBLE: ros-humble-yasmin-viewer. yasmin and yasmin-ros are
+# both released into the Humble index; the viewer is not, and upstream has not
+# backported it. It is left in this list on purpose rather than deleted: the
+# name is correct, it is what you want on any distro that has it, and
+# _vxo_ros_extra_packages already degrades a missing candidate to an accurate
+# "not released for humble, skipped" warning plus a pointer to building it in
+# the workspace. Expect that warning on every 22.04 install — it is the
+# documented state of the world, not a broken apt source.
 VXO_ROS_EXTRA_PACKAGES=(
     yasmin
     yasmin-ros
@@ -77,16 +89,91 @@ VXO_ROS_PYTHON_DEV=(
     python3-serial
 )
 
+# ─────────────────────────── stonefish ───────────────────────────
+#
+# Stonefish is a plain C++ simulation library, NOT a ROS package: it is not in
+# the ROS apt index, rosdep has no key for it, and nothing in the workspace can
+# pull it in. stonefish_ros2 does `find_package(Stonefish REQUIRED 1.5.0)`, so
+# without it that package fails to configure and takes the whole simulator set
+# down with it — which is most of what a new member is here to run.
+#
+# Built from vortexntnu's fork rather than patrykcieslak's upstream: the fork is
+# what stonefish_ros2 is developed against, and the two do drift.
+#
+# Tracked by BRANCH, not pinned to a tag+SHA the way CasADi is in lib/cxxlibs.sh.
+# That difference is deliberate. CasADi is pinned because vortex-auv's own
+# install_casadi.sh pins the same commit and the point is that both build
+# provably identical source. Stonefish has no such counterpart script, the fork's
+# main is the team's source of truth, and pinning it here would mean this
+# installer quietly shipping an older simulator than the workspace expects.
+VXO_STONEFISH_REPO="https://github.com/vortexntnu/stonefish.git"
+VXO_STONEFISH_BRANCH="main"
+
+# The version stonefish_ros2's find_package() demands, and what the fork's
+# CMakeLists declares. Checked after the build so a fork that moves past it is
+# reported here rather than as a confusing find_package failure later.
+VXO_STONEFISH_MIN_VERSION="1.5.0"
+
+VXO_STONEFISH_PREFIX="/usr/local"
+VXO_STONEFISH_SRC="${XDG_CACHE_HOME:-$HOME/.cache}/vortex-onboarding/stonefish"
+
+# What its CMakeLists find_package()s, plus the toolchain to build it. glm is
+# header-only and the one people forget; without libgl1-mesa-dev the OpenGL
+# lookup finds the runtime but no headers and fails with a message that does not
+# name the package to install.
+VXO_STONEFISH_BUILD_DEPS=(
+    cmake
+    build-essential
+    libglm-dev
+    libsdl2-dev
+    libfreetype6-dev
+    libgl1-mesa-dev
+)
+
+# Records the commit that was built, so a re-run is a fast no-op but a fork that
+# has moved on triggers a rebuild.
+VXO_STONEFISH_STAMP="$VXO_STATE_DIR/stonefish_built_commit"
+
 # repo|branch. Add a line here to add a package to the workspace.
+#
+# vortex-vkf provides the `vortex_filtering` package — the repository name does
+# not contain the package name, which is why it is easy to leave out, and why
+# vortex-auv's own dependencies.repos lists it explicitly.
+#
+# Nothing the simulator needs depends on it. What does are three packages inside
+# vortex-auv (ekf_pose_filtering, pose_filtering, line_filtering), which
+# find_package() it by that name; without it rosdep reports "Cannot locate
+# rosdep definition for [vortex_filtering]" and colcon fails at the first of the
+# three, aborting whatever was queued behind it. That is the only reason it is
+# here: one shallow clone and a six-second build buys a workspace that builds
+# clean instead of one that stops partway with an error nobody asked for.
 VXO_ROS_REPOS=(
     "vortexntnu/vortex-auv|development"
     "vortexntnu/vortex-msgs|main"
+    "vortexntnu/vortex-vkf|main"
     "vortexntnu/vortex-utils|main"
     "vortexntnu/vortex-ci|main"
     "vortexntnu/stonefish_ros2|main"
     "vortexntnu/vortex-stonefish-interface|main"
     "vortexntnu/vortex-stonefish-sim|main"
     "vortexntnu/stim300-driver|feature/ros2-port"
+)
+
+# rosdep keys to skip, with the reason each one is here. These are upstream
+# package.xml bugs in repositories this installer only clones, so they cannot be
+# fixed from this repo — but they must not be allowed to abort the whole rosdep
+# run (see _vxo_ros_rosdep for why that is all-or-nothing).
+#
+#   roscpp   stim300-driver's feature/ros2-port branch builds with ament_cmake
+#            but still declares ROS 1's roscpp. There is no roscpp in any ROS 2
+#            distro, so the key can never resolve. The package itself builds
+#            without it. Its main branch is worse, not better: that one is still
+#            full catkin.
+#
+# Remove an entry here once the upstream package.xml is fixed; a skipped key
+# that has become resolvable costs nothing but is no longer doing any work.
+VXO_ROS_ROSDEP_SKIP_KEYS=(
+    roscpp
 )
 
 # ─────────────────────────── apt repo + packages ───────────────────────────
@@ -317,11 +404,191 @@ _vxo_ros_rosdep() {
     run rosdep update || log_warn "rosdep update failed, so dependency resolution may be incomplete"
 
     log_info "resolving workspace dependencies with rosdep"
+
+    # --skip-keys is what makes this useful rather than all-or-nothing.
+    #
+    # `rosdep install` resolves EVERY package.xml in the tree before it installs
+    # ANYTHING. A single key it cannot map to a system package aborts the whole
+    # run, and nothing is installed at all — not even the dependencies it did
+    # resolve. The failure then surfaces much later and looks unrelated: the
+    # colcon build dies on the first package with a missing system library, and
+    # the rosdep warning that explains it has scrolled well off screen.
+    #
+    # VXO_ROS_ROSDEP_SKIP_KEYS names the keys known to be unresolvable in this
+    # workspace, so the rest still installs.
+    #
+    # An `if`, not `((...)) && skip_args=(...)`: an empty list would make the
+    # `&&` list return non-zero and errexit would take the installer down over
+    # nothing having been skipped.
+    local skip_args=()
+    if ((${#VXO_ROS_ROSDEP_SKIP_KEYS[@]} > 0)); then
+        skip_args=(--skip-keys "${VXO_ROS_ROSDEP_SKIP_KEYS[*]}")
+    fi
+
     run rosdep install --from-paths "$VXO_ROS_WS/src" --ignore-src -y \
-        --rosdistro "$VXO_ROS_DISTRO" \
+        --rosdistro "$VXO_ROS_DISTRO" "${skip_args[@]}" \
         || log_warn "rosdep could not satisfy every dependency, so the build may fail below"
 }
 
+# _vxo_ros_stonefish: build and install the Stonefish library.
+#
+# No `die` anywhere below, and every step checked with an explicit `|| return`,
+# for the same two reasons lib/cxxlibs.sh spells out for CasADi: this runs
+# inside a SOFT stage, so errexit is suspended and an unchecked failure would
+# let the steps after it run on a broken build; and `die` exits the whole
+# installer, which from a soft stage costs the user every stage after this one.
+_vxo_ros_stonefish() {
+    if [[ "${VXO_DRY_RUN:-0}" == "1" ]]; then
+        log_info "[dry-run] would build the Stonefish library from $VXO_STONEFISH_REPO"
+        log_info "[dry-run]   and install it into $VXO_STONEFISH_PREFIX"
+        return 0
+    fi
+
+    apt_update_once
+    apt_install "${VXO_STONEFISH_BUILD_DEPS[@]}"
+
+    # Fetch BEFORE deciding whether a rebuild is needed, not after. The
+    # up-to-date check compares the stamp against the local origin/<branch>, and
+    # that ref only moves when something fetches it — so checking first would
+    # compare the stamp against the very commit it was written from, always
+    # match, and skip the fetch that would have revealed the fork had moved.
+    # Stonefish would then stay pinned to whatever was built the first time,
+    # forever, while reporting itself current. A shallow single-branch fetch is
+    # cheap; a silently stale simulator library is not.
+    _vxo_stonefish_fetch || return 1
+
+    if _vxo_stonefish_current; then
+        log_skip "Stonefish already built from $(cut -c1-12 "$VXO_STONEFISH_STAMP" 2>/dev/null)"
+        return 0
+    fi
+
+    _vxo_stonefish_build || return 1
+}
+
+# True when the installed Stonefish was built from the commit the fork's branch
+# points at. Reads only local state — _vxo_ros_stonefish runs the fetch that
+# makes origin/<branch> current before calling this, so an offline machine
+# compares against the last checkout it managed to get rather than failing.
+_vxo_stonefish_current() {
+    [[ "${VXO_DRY_RUN:-0}" == "1" ]] && return 1
+    [[ -f "$VXO_STONEFISH_PREFIX/lib/cmake/Stonefish/StonefishConfig.cmake" ]] || return 1
+    [[ -f "$VXO_STONEFISH_STAMP" ]] || return 1
+
+    local built head
+    built="$(cat "$VXO_STONEFISH_STAMP" 2>/dev/null)"
+    head="$(git -C "$VXO_STONEFISH_SRC" rev-parse "origin/$VXO_STONEFISH_BRANCH" 2>/dev/null || true)"
+
+    # No checkout to compare against (someone cleared the cache) but the library
+    # is installed and stamped: leave it alone rather than rebuild on no
+    # evidence.
+    [[ -z "$head" ]] && return 0
+    [[ "$built" == "$head" ]]
+}
+
+_vxo_stonefish_fetch() {
+    log_info "fetching Stonefish ($VXO_STONEFISH_BRANCH)"
+    run mkdir -p "$(dirname "$VXO_STONEFISH_SRC")"
+
+    if [[ -d "$VXO_STONEFISH_SRC/.git" ]]; then
+        if ! run git -C "$VXO_STONEFISH_SRC" fetch --quiet --depth 1 origin "$VXO_STONEFISH_BRANCH"; then
+            log_warn "could not refresh the Stonefish checkout, building what is on disk"
+            return 0
+        fi
+        run git -C "$VXO_STONEFISH_SRC" checkout --quiet "FETCH_HEAD" \
+            || { log_error "could not check out $VXO_STONEFISH_BRANCH"; return 1; }
+    else
+        run git clone --quiet --depth 1 --branch "$VXO_STONEFISH_BRANCH" \
+            "$VXO_STONEFISH_REPO" "$VXO_STONEFISH_SRC" \
+            || { log_error "could not clone $VXO_STONEFISH_REPO"; return 1; }
+    fi
+}
+
+_vxo_stonefish_build() {
+    local build="$VXO_STONEFISH_SRC/build"
+    local log="$VXO_LOG_DIR/stonefish-build.log"
+    local jobs
+
+    # _vxo_build_jobs caps parallelism by RAM rather than core count. It lives in
+    # lib/cxxlibs.sh; sourced here so --only=ros2 works on its own.
+    if ! declare -F _vxo_build_jobs >/dev/null 2>&1; then
+        # shellcheck source=lib/cxxlibs.sh
+        source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cxxlibs.sh"
+    fi
+    jobs="$(_vxo_build_jobs)"
+
+    log_info "building Stonefish with $jobs parallel jobs (5 to 15 minutes)"
+    log_info "  live log: $log"
+
+    run rm -rf "$build"
+    run mkdir -p "$build"
+
+    # BUILD_TESTS and EMBED_RESOURCES are both OFF by default and are left that
+    # way on purpose: BUILD_TESTS builds a Stonefish_test library INSTEAD of the
+    # installable one, so turning it on produces a tree that installs nothing
+    # find_package(Stonefish) can find.
+    if ! run cmake -S "$VXO_STONEFISH_SRC" -B "$build" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX="$VXO_STONEFISH_PREFIX"; then
+        log_error "Stonefish cmake configuration failed. Full output: $VXO_LOG_FILE"
+        return 1
+    fi
+
+    set +e
+    cmake --build "$build" --parallel "$jobs" 2>&1 | tee "$log"
+    local rc=${PIPESTATUS[0]}
+    set -e
+
+    if ((rc != 0)); then
+        log_error "Stonefish build failed (exit $rc). Last 30 lines:"
+        tail -n 30 "$log" >&2 || true
+        log_error "Full build log: $log"
+        log_error "Re-run just this stage with: ./install.sh --only=ros2"
+        return "$rc"
+    fi
+
+    if ! run sudo cmake --install "$build"; then
+        log_error "Stonefish install into $VXO_STONEFISH_PREFIX failed"
+        return 1
+    fi
+    run sudo ldconfig
+
+    local head
+    head="$(git -C "$VXO_STONEFISH_SRC" rev-parse HEAD 2>/dev/null || echo unknown)"
+    printf '%s\n' "$head" >"$VXO_STONEFISH_STAMP"
+
+    # Said out loud rather than assumed: stonefish_ros2 asks for a minimum
+    # version, and a fork whose CMakeLists has moved below it would otherwise
+    # surface as a find_package failure with no hint that THIS is where it came
+    # from.
+    local version
+    version="$(sed -nE 's/^project\(Stonefish VERSION ([0-9.]+)\).*/\1/p' \
+        "$VXO_STONEFISH_SRC/CMakeLists.txt" 2>/dev/null || true)"
+    if [[ -n "$version" && "$version" != "$VXO_STONEFISH_MIN_VERSION" ]]; then
+        log_warn "Stonefish reports $version; stonefish_ros2 asks for $VXO_STONEFISH_MIN_VERSION."
+        log_warn "If the build below fails in stonefish_ros2, this is why."
+    fi
+    log_ok "Stonefish ${version:-?} installed to $VXO_STONEFISH_PREFIX (commit ${head:0:12})"
+}
+
+# BUILD_TESTING=OFF is not a shortcut, it is the difference between a workspace
+# that builds and one that does not.
+#
+# colcon builds test targets by default. vortex_filtering's ukf_test.cpp
+# instantiates the UKF templates in a way that SEGFAULTS the compiler —
+# "internal compiler error: Segmentation fault" at ukf.hpp:252, on gcc-11 and
+# gcc-12 alike, so this is an upstream template bug and not something the
+# toolchain pin can dodge. The crash costs three and a half minutes before it
+# fails, takes vortex_filtering down, and aborts everything queued behind it,
+# including the packages that only needed its library.
+#
+# With tests off, the same package builds in about six seconds and exports the
+# vortex_filteringConfig.cmake that ekf_pose_filtering, pose_filtering and
+# line_filtering look for.
+#
+# An onboarding install owes the user a working workspace, not a test run.
+# Anyone who wants the tests can build them deliberately:
+#   colcon build --packages-select vortex_filtering
+# and will meet the same ICE, which is the honest place to meet it.
 _vxo_ros_build() {
     local log="$VXO_LOG_DIR/colcon-build.log"
     log_info "building the workspace with colcon (this is the long part)"
@@ -341,7 +608,8 @@ _vxo_ros_build() {
         # shellcheck disable=SC1090
         . "$VXO_ROS_SETUP"
         cd "$VXO_ROS_WS" || exit 1
-        colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release 2>&1
+        colcon build --symlink-install \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF 2>&1
     ) | tee "$log"
     local rc=${PIPESTATUS[0]}
     set -e
@@ -430,6 +698,10 @@ vxo_ros2() {
     _vxo_ros_utility_scripts
     _vxo_ros_bashrc_hook
 
+    # Before rosdep and colcon, and before the --skip-ros-build early return
+    # below is NOT where this goes: --skip-ros-build exists to defer the long
+    # compile, and Stonefish is part of that compile.
+
     # --skip-ros-build stops here: ROS and the workspace sources are installed,
     # but rosdep resolution and the 30-60 minute colcon build are left for later.
     # Used by the container test harness, and handy when you want the toolchain
@@ -445,9 +717,28 @@ vxo_ros2() {
         return 0
     fi
 
-    _vxo_ros_rosdep
-    _vxo_ros_build
+    # Not checked with `|| return`: a Stonefish that fails to build costs the
+    # simulator packages and nothing else, and the rest of the workspace is
+    # still worth building. The failure is already logged in red by
+    # _vxo_stonefish_build, and colcon will name stonefish_ros2 explicitly.
+    _vxo_ros_stonefish || log_warn "continuing without Stonefish; the simulator packages will not build"
 
-    # The workspace is built now; clear any stale skip marker.
-    rm -f "$VXO_STATE_DIR/ros_build_skipped"
+    _vxo_ros_rosdep
+
+    # The build's exit status has to be carried out of this function by hand.
+    # run_stage calls soft stages as `"$fn" || rc=$?`, and that suspends errexit
+    # for everything inside the call — so a non-zero _vxo_ros_build does NOT end
+    # vxo_ros2, execution simply falls through to the next line and the function
+    # returns that line's status instead. With a bare `rm -f` last, a colcon
+    # build that failed was reported as "✓ [ros2] done", checkpointed as
+    # complete, and then skipped by --resume: the one stage most likely to fail,
+    # recorded as the one that succeeded.
+    local build_rc=0
+    _vxo_ros_build || build_rc=$?
+
+    # Only on a real build. Clearing the marker after a failure would tell
+    # verify_install.sh the workspace was built when it was not.
+    ((build_rc == 0)) && rm -f "$VXO_STATE_DIR/ros_build_skipped"
+
+    return "$build_rc"
 }

@@ -4,7 +4,7 @@
 # rustup rather than the apt `rustc`/`cargo` packages: apt's Rust is frozen at
 # whatever the release shipped and cannot be pinned or switched per-project.
 #
-# SCOPE: Ubuntu 26.04 only, stock GNOME.
+# SCOPE: Ubuntu 22.04 only, stock GNOME.
 
 [[ -n "${_VXO_RUST_SOURCED:-}" ]] && return 0
 _VXO_RUST_SOURCED=1
